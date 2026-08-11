@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { entityStatusSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema } from "./common";
 
 export const createRetailerSchema = z.object({
   retailerCode: z.string().trim().min(1, "Retailer Code là bắt buộc"),
@@ -11,6 +11,7 @@ export const updateRetailerSchema = z.object({
   retailerCode: z.string().trim().min(1).optional(),
   retailerName: z.string().trim().min(1).optional(),
   status: entityStatusSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
 });
 
 export type CreateRetailerInput = z.infer<typeof createRetailerSchema>;

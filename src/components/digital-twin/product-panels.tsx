@@ -7,7 +7,15 @@ import { useCreateProduct, useUpdateProduct } from "@/lib/api/hooks/use-products
 import { useSelectionStore } from "@/lib/state/selection";
 import type { Product } from "@/lib/types/entities";
 
-import { DetailRow, FieldErrors, GeneralError, inputClass, StatusBadge } from "./inspector-shared";
+import {
+  DetailRow,
+  FieldErrors,
+  GeneralError,
+  inputClass,
+  StatusBadge,
+  UnsavedBadge,
+  useSyncDirty,
+} from "./inspector-shared";
 
 // ---------------------------------------------------------------------------
 // Create Product
@@ -189,12 +197,16 @@ export function ProductDetailPanel({ product }: { product: Product }) {
     draft.productGroup !== (product.productGroup ?? "") ||
     draft.brand !== (product.brand ?? "") ||
     draft.imageUrl !== (product.imageUrl ?? "");
+  useSyncDirty(isDirty);
 
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-ubl-secondary">Product</h3>
-        <StatusBadge status={product.status} />
+        <div className="flex items-center gap-2">
+          <UnsavedBadge isDirty={isDirty} />
+          <StatusBadge status={product.status} />
+        </div>
       </div>
       <GeneralError error={error} />
 
@@ -276,7 +288,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
             <div className="flex gap-2">
               <button
                 disabled={!isDirty || isPending}
-                onClick={() => mutate(draft)}
+                onClick={() => mutate({ ...draft, expectedUpdatedAt: product.updatedAt })}
                 className="rounded bg-ubl-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-ubl-primary-dark disabled:opacity-50"
               >
                 {isPending ? "Đang lưu..." : "Save"}
@@ -302,7 +314,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
             <button
               onClick={() => {
                 if (confirm("Archive Product này? Các Assignment hiện có vẫn giữ nguyên.")) {
-                  mutate({ status: "Archived" });
+                  mutate({ status: "Archived", expectedUpdatedAt: product.updatedAt });
                 }
               }}
               className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"

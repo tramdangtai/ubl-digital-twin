@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 
 import { AppError, NotFoundError, ValidationError } from "../api/errors";
+import { assertNotStale } from "./concurrency";
 import { db } from "../db/client";
 import { displayPosition, product, productAssignment } from "../db/schema";
 import type {
@@ -90,6 +91,8 @@ export async function updateProductAssignment(
   input: UpdateProductAssignmentInput
 ) {
   const existing = await getProductAssignment(assignmentId);
+  const { expectedUpdatedAt, ...fields } = input;
+  assertNotStale(expectedUpdatedAt, existing.updatedAt);
 
   if (
     input.facingQty !== undefined &&
@@ -115,7 +118,7 @@ export async function updateProductAssignment(
 
   const [row] = await db
     .update(productAssignment)
-    .set(input)
+    .set(fields)
     .where(eq(productAssignment.assignmentId, assignmentId))
     .returning();
   return row;

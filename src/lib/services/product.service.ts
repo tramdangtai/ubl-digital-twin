@@ -1,6 +1,7 @@
 import { and, asc, count, eq, ilike, or } from "drizzle-orm";
 
 import { NotFoundError } from "../api/errors";
+import { assertNotStale } from "./concurrency";
 import { db } from "../db/client";
 import { product } from "../db/schema";
 import type { CreateProductInput, ListProductsQuery, UpdateProductInput } from "../validation/product";
@@ -73,11 +74,13 @@ export async function createProduct(input: CreateProductInput) {
  * Foundation không nói rõ, ghi lại ở CLAUDE.md.
  */
 export async function updateProduct(productId: string, input: UpdateProductInput) {
-  await getProduct(productId);
+  const existing = await getProduct(productId);
+  const { expectedUpdatedAt, ...fields } = input;
+  assertNotStale(expectedUpdatedAt, existing.updatedAt);
 
   const [row] = await db
     .update(product)
-    .set(input)
+    .set(fields)
     .where(eq(product.productId, productId))
     .returning();
   return row;

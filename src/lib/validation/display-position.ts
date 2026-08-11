@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { entityStatusSchema, uuidSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema, uuidSchema } from "./common";
 
 /** Part 03 §8 — Phase 1 hỗ trợ 6 display type. */
 export const displayTypeSchema = z.enum(["Shelf", "Hook", "Basket", "Tray", "Pegboard", "Other"]);
@@ -28,6 +28,7 @@ export const updateDisplayPositionSchema = z.object({
   facingLimit: z.number().int().min(1).nullable().optional(),
   sortOrder: z.number().int().optional(),
   status: entityStatusSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
 });
 
 export type CreateDisplayPositionInput = z.infer<typeof createDisplayPositionSchema>;

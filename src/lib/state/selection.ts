@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { confirmDiscardUnsavedChanges } from "./unsaved-changes";
+
 /**
  * Selection / Interaction Mode State — Part 05 §7-8, §10.
  * Không phải Business Data, không ghi Database.
@@ -57,9 +59,13 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   selectedProductId: null,
   mode: "view",
 
-  setExplorerTab: (tab) => set({ explorerTab: tab, mode: "view" }),
+  setExplorerTab: (tab) => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ explorerTab: tab, mode: "view" });
+  },
 
-  selectRetailer: (retailerId) =>
+  selectRetailer: (retailerId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedRetailerId: retailerId,
@@ -68,8 +74,10 @@ export const useSelectionStore = create<SelectionState>((set) => ({
       selectedSurfaceId: null,
       selectedDisplayPositionId: null,
       mode: "view",
-    }),
-  selectStore: (retailerId, storeId) =>
+    });
+  },
+  selectStore: (retailerId, storeId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedRetailerId: retailerId,
@@ -78,34 +86,48 @@ export const useSelectionStore = create<SelectionState>((set) => ({
       selectedSurfaceId: null,
       selectedDisplayPositionId: null,
       mode: "view",
-    }),
-  selectFixture: (fixtureId) =>
+    });
+  },
+  selectFixture: (fixtureId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: fixtureId,
       selectedSurfaceId: null,
       selectedDisplayPositionId: null,
       mode: "view",
-    }),
-  selectSurface: (fixtureId, surfaceId) =>
+    });
+  },
+  selectSurface: (fixtureId, surfaceId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: fixtureId,
       selectedSurfaceId: surfaceId,
       selectedDisplayPositionId: null,
       mode: "view",
-    }),
-  selectDisplayPosition: (surfaceId, positionId) =>
+    });
+  },
+  selectDisplayPosition: (surfaceId, positionId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedSurfaceId: surfaceId,
       selectedDisplayPositionId: positionId,
       mode: "view",
-    }),
-  selectProduct: (productId) => set({ explorerTab: "products", selectedProductId: productId, mode: "view" }),
+    });
+  },
+  selectProduct: (productId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ explorerTab: "products", selectedProductId: productId, mode: "view" });
+  },
 
-  startCreateRetailer: () => set({ explorerTab: "twin", mode: "create-retailer" }),
-  startCreateStore: (retailerId) =>
+  startCreateRetailer: () => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ explorerTab: "twin", mode: "create-retailer" });
+  },
+  startCreateStore: (retailerId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedRetailerId: retailerId,
@@ -114,28 +136,40 @@ export const useSelectionStore = create<SelectionState>((set) => ({
       selectedSurfaceId: null,
       selectedDisplayPositionId: null,
       mode: "create-store",
-    }),
-  startCreateFixture: () =>
+    });
+  },
+  startCreateFixture: () => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: null,
       selectedSurfaceId: null,
       selectedDisplayPositionId: null,
       mode: "create-fixture",
-    }),
-  startCreateSurface: (fixtureId) =>
+    });
+  },
+  startCreateSurface: (fixtureId) => {
+    if (!confirmDiscardUnsavedChanges()) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: fixtureId,
       selectedSurfaceId: null,
       selectedDisplayPositionId: null,
       mode: "create-surface",
-    }),
-  startCreateDisplayPosition: () =>
-    set({ explorerTab: "twin", selectedDisplayPositionId: null, mode: "create-display-position" }),
-  startBulkGenerate: () =>
-    set({ explorerTab: "twin", selectedDisplayPositionId: null, mode: "bulk-generate-display-position" }),
-  startCreateProduct: () => set({ explorerTab: "products", selectedProductId: null, mode: "create-product" }),
+    });
+  },
+  startCreateDisplayPosition: () => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ explorerTab: "twin", selectedDisplayPositionId: null, mode: "create-display-position" });
+  },
+  startBulkGenerate: () => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ explorerTab: "twin", selectedDisplayPositionId: null, mode: "bulk-generate-display-position" });
+  },
+  startCreateProduct: () => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ explorerTab: "products", selectedProductId: null, mode: "create-product" });
+  },
   startAssignProduct: () => set({ mode: "assign-product" }),
   cancelCreate: () => set({ mode: "view" }),
 }));

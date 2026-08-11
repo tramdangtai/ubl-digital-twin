@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { entityStatusSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema } from "./common";
 
 export const createProductSchema = z.object({
   itemCode: z.string().trim().min(1, "Item Code là bắt buộc"),
@@ -26,6 +26,7 @@ export const updateProductSchema = z.object({
   heightMm: z.number().positive("Height phải lớn hơn 0").nullable().optional(),
   depthMm: z.number().positive("Depth phải lớn hơn 0").nullable().optional(),
   status: entityStatusSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
 });
 
 /** Quyết định #10 — quy mô nhỏ (~4000 SKU), offset pagination là đủ. */

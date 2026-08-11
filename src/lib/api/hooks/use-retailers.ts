@@ -26,7 +26,12 @@ export function useUpdateRetailer(retailerId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
-      input: Partial<{ retailerCode: string; retailerName: string; status: EntityStatus }>
+      input: Partial<{
+        retailerCode: string;
+        retailerName: string;
+        status: EntityStatus;
+        expectedUpdatedAt: string;
+      }>
     ) => apiClient.patch<Retailer>(`/api/retailers/${retailerId}`, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["retailers"] });

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { OWNER_COMPANIES } from "@/lib/constants";
 
-import { entityStatusSchema, uuidSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema, uuidSchema } from "./common";
 
 /** Part 08 §11 — Phase 1 hỗ trợ tối thiểu 2 giá trị. */
 export const ownerCompanySchema = z.enum(OWNER_COMPANIES);
@@ -33,6 +33,7 @@ export const updateFixtureSchema = z.object({
   positionY: z.number().optional(),
   rotationDegree: z.number().min(0).max(360).optional(),
   status: entityStatusSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
 });
 
 export type CreateFixtureInput = z.infer<typeof createFixtureSchema>;

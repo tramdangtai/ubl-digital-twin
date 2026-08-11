@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { entityStatusSchema, uuidSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema, uuidSchema } from "./common";
 
 const dateOnly = z
   .string()
@@ -28,6 +28,7 @@ export const updateProductAssignmentSchema = z
     startDate: dateOnly.nullable().optional(),
     endDate: dateOnly.nullable().optional(),
     status: entityStatusSchema.optional(),
+    expectedUpdatedAt: expectedUpdatedAtSchema,
   })
   .refine((val) => !val.startDate || !val.endDate || val.startDate <= val.endDate, {
     message: "Start Date không được lớn hơn End Date.",

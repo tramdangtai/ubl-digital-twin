@@ -39,6 +39,7 @@ export type UpdateSurfaceBody = Partial<{
   heightMm: number;
   sortOrder: number;
   status: EntityStatus;
+  expectedUpdatedAt: string;
 }>;
 
 export function useUpdateSurface(surfaceId: string, fixtureId: string) {

@@ -38,6 +38,7 @@ export function useUpdateStore(storeId: string) {
         storeName: string;
         address: string;
         status: EntityStatus;
+        expectedUpdatedAt: string;
       }>
     ) => apiClient.patch<Store>(`/api/stores/${storeId}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["stores"] }),

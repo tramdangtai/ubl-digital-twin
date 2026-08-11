@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { fixture, store, surface } from "../db/schema";
 import type { CreateFixtureInput, UpdateFixtureInput } from "../validation/fixture";
 import { archiveFixtureSubtree } from "./cascade";
+import { assertNotStale } from "./concurrency";
 
 export async function listFixtures(storeId: string, includeArchived = false) {
   return db
@@ -73,13 +74,15 @@ export async function createFixture(input: CreateFixtureInput) {
 }
 
 export async function updateFixture(fixtureId: string, input: UpdateFixtureInput) {
-  await getFixture(fixtureId);
+  const existing = await getFixture(fixtureId);
+  const { expectedUpdatedAt, ...fields } = input;
+  assertNotStale(expectedUpdatedAt, existing.updatedAt);
 
-  if (input.status === "Archived") {
+  if (fields.status === "Archived") {
     return db.transaction(async (tx) => {
-      const hasOtherFields = Object.keys(input).some((key) => key !== "status");
+      const hasOtherFields = Object.keys(fields).some((key) => key !== "status");
       if (hasOtherFields) {
-        await tx.update(fixture).set(input).where(eq(fixture.fixtureId, fixtureId));
+        await tx.update(fixture).set(fields).where(eq(fixture.fixtureId, fixtureId));
       }
       await archiveFixtureSubtree(tx, fixtureId);
       const [row] = await tx.select().from(fixture).where(eq(fixture.fixtureId, fixtureId));
@@ -89,7 +92,7 @@ export async function updateFixture(fixtureId: string, input: UpdateFixtureInput
 
   const [row] = await db
     .update(fixture)
-    .set(input)
+    .set(fields)
     .where(eq(fixture.fixtureId, fixtureId))
     .returning();
   return row;

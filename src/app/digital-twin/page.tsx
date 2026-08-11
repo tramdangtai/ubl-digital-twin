@@ -10,6 +10,7 @@ import {
   usePanelLayoutStore,
   WORKSPACE_MIN_WIDTH,
 } from "@/lib/state/panel-layout";
+import { useBeforeUnloadGuard } from "@/lib/state/unsaved-changes";
 
 export default function DigitalTwinPage() {
   const {
@@ -22,6 +23,7 @@ export default function DigitalTwinPage() {
     toggleExplorerCollapsed,
     toggleInspectorCollapsed,
   } = usePanelLayoutStore();
+  useBeforeUnloadGuard();
 
   return (
     <div className="flex h-screen flex-col">

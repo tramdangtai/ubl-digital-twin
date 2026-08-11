@@ -9,6 +9,7 @@ import type {
   UpdateDisplayPositionInput,
 } from "../validation/display-position";
 import { archiveDisplayPositionSubtree } from "./cascade";
+import { assertNotStale } from "./concurrency";
 
 export async function listDisplayPositions(surfaceId: string, includeArchived = false) {
   return db
@@ -63,13 +64,15 @@ export async function createDisplayPosition(input: CreateDisplayPositionInput) {
 }
 
 export async function updateDisplayPosition(positionId: string, input: UpdateDisplayPositionInput) {
-  await getDisplayPosition(positionId);
+  const existing = await getDisplayPosition(positionId);
+  const { expectedUpdatedAt, ...fields } = input;
+  assertNotStale(expectedUpdatedAt, existing.updatedAt);
 
-  if (input.status === "Archived") {
+  if (fields.status === "Archived") {
     return db.transaction(async (tx) => {
-      const hasOtherFields = Object.keys(input).some((key) => key !== "status");
+      const hasOtherFields = Object.keys(fields).some((key) => key !== "status");
       if (hasOtherFields) {
-        await tx.update(displayPosition).set(input).where(eq(displayPosition.positionId, positionId));
+        await tx.update(displayPosition).set(fields).where(eq(displayPosition.positionId, positionId));
       }
       await archiveDisplayPositionSubtree(tx, positionId);
       const [row] = await tx
@@ -82,7 +85,7 @@ export async function updateDisplayPosition(positionId: string, input: UpdateDis
 
   const [row] = await db
     .update(displayPosition)
-    .set(input)
+    .set(fields)
     .where(eq(displayPosition.positionId, positionId))
     .returning();
   return row;

@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { fixture, surface } from "../db/schema";
 import type { CreateSurfaceInput, UpdateSurfaceInput } from "../validation/surface";
 import { archiveSurfaceSubtree } from "./cascade";
+import { assertNotStale } from "./concurrency";
 
 export async function listSurfaces(fixtureId: string, includeArchived = false) {
   return db
@@ -49,13 +50,15 @@ export async function createSurface(input: CreateSurfaceInput) {
 }
 
 export async function updateSurface(surfaceId: string, input: UpdateSurfaceInput) {
-  await getSurface(surfaceId);
+  const existing = await getSurface(surfaceId);
+  const { expectedUpdatedAt, ...fields } = input;
+  assertNotStale(expectedUpdatedAt, existing.updatedAt);
 
-  if (input.status === "Archived") {
+  if (fields.status === "Archived") {
     return db.transaction(async (tx) => {
-      const hasOtherFields = Object.keys(input).some((key) => key !== "status");
+      const hasOtherFields = Object.keys(fields).some((key) => key !== "status");
       if (hasOtherFields) {
-        await tx.update(surface).set(input).where(eq(surface.surfaceId, surfaceId));
+        await tx.update(surface).set(fields).where(eq(surface.surfaceId, surfaceId));
       }
       await archiveSurfaceSubtree(tx, surfaceId);
       const [row] = await tx.select().from(surface).where(eq(surface.surfaceId, surfaceId));
@@ -65,7 +68,7 @@ export async function updateSurface(surfaceId: string, input: UpdateSurfaceInput
 
   const [row] = await db
     .update(surface)
-    .set(input)
+    .set(fields)
     .where(eq(surface.surfaceId, surfaceId))
     .returning();
   return row;

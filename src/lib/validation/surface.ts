@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { entityStatusSchema, uuidSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema, uuidSchema } from "./common";
 
 /** Part 03 §7 — Phase 1 chỉ hỗ trợ 5 orientation. */
 export const surfaceOrientationSchema = z.enum(["Front", "Back", "Left", "Right", "Top"]);
@@ -20,6 +20,7 @@ export const updateSurfaceSchema = z.object({
   heightMm: z.number().positive("Height phải lớn hơn 0").optional(),
   sortOrder: z.number().int().optional(),
   status: entityStatusSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
 });
 
 export type CreateSurfaceInput = z.infer<typeof createSurfaceSchema>;

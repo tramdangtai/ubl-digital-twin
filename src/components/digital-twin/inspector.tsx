@@ -15,7 +15,16 @@ import { useCreateRetailer, useRetailers, useUpdateRetailer } from "@/lib/api/ho
 import { useCreateStore, useStores, useUpdateStore } from "@/lib/api/hooks/use-stores";
 import { useCreateSurface, useSurfaces, useUpdateSurface } from "@/lib/api/hooks/use-surfaces";
 import { DISPLAY_TYPES, OWNER_COMPANIES, SURFACE_ORIENTATIONS } from "@/lib/constants";
-import { DetailRow, FieldErrors, GeneralError, inputClass, NumberField, StatusBadge } from "./inspector-shared";
+import {
+  DetailRow,
+  FieldErrors,
+  GeneralError,
+  inputClass,
+  NumberField,
+  StatusBadge,
+  UnsavedBadge,
+  useSyncDirty,
+} from "./inspector-shared";
 import { AssignProductPanel, CreateProductPanel, ProductDetailPanel } from "./product-panels";
 import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
 import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
@@ -374,12 +383,16 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
 
   const isDirty =
     draft.retailerCode !== retailer.retailerCode || draft.retailerName !== retailer.retailerName;
+  useSyncDirty(isDirty);
 
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-ubl-secondary">Retailer</h3>
-        <StatusBadge status={retailer.status} />
+        <div className="flex items-center gap-2">
+          <UnsavedBadge isDirty={isDirty} />
+          <StatusBadge status={retailer.status} />
+        </div>
       </div>
       <GeneralError error={error} />
 
@@ -410,7 +423,7 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
           <div className="flex gap-2">
             <button
               disabled={!isDirty || isPending}
-              onClick={() => mutate(draft)}
+              onClick={() => mutate({ ...draft, expectedUpdatedAt: retailer.updatedAt })}
               className="rounded bg-ubl-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-ubl-primary-dark disabled:opacity-50"
             >
               {isPending ? "Đang lưu..." : "Save"}
@@ -429,7 +442,7 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
           <button
             onClick={() => {
               if (confirm("Archive Retailer này? Toàn bộ Store bên dưới cũng sẽ bị Archive.")) {
-                mutate({ status: "Archived" });
+                mutate({ status: "Archived", expectedUpdatedAt: retailer.updatedAt });
               }
             }}
             className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
@@ -463,12 +476,16 @@ function StoreDetailPanel({ store }: { store: Store }) {
     draft.storeCode !== store.storeCode ||
     draft.storeName !== store.storeName ||
     draft.address !== (store.address ?? "");
+  useSyncDirty(isDirty);
 
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-ubl-secondary">Store</h3>
-        <StatusBadge status={store.status} />
+        <div className="flex items-center gap-2">
+          <UnsavedBadge isDirty={isDirty} />
+          <StatusBadge status={store.status} />
+        </div>
       </div>
       <GeneralError error={error} />
 
@@ -509,7 +526,7 @@ function StoreDetailPanel({ store }: { store: Store }) {
           <div className="flex gap-2">
             <button
               disabled={!isDirty || isPending}
-              onClick={() => mutate(draft)}
+              onClick={() => mutate({ ...draft, expectedUpdatedAt: store.updatedAt })}
               className="rounded bg-ubl-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-ubl-primary-dark disabled:opacity-50"
             >
               {isPending ? "Đang lưu..." : "Save"}
@@ -532,7 +549,7 @@ function StoreDetailPanel({ store }: { store: Store }) {
           <button
             onClick={() => {
               if (confirm("Archive Store này? Toàn bộ Fixture/Surface/Position bên dưới cũng sẽ bị Archive.")) {
-                mutate({ status: "Archived" });
+                mutate({ status: "Archived", expectedUpdatedAt: store.updatedAt });
               }
             }}
             className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
@@ -687,7 +704,11 @@ function FixtureDetailPanel({ fixture, storeId }: { fixture: Fixture; storeId: s
             disabled={isPending || hasInvalidNumbers}
             onClick={() =>
               mutate(
-                { ...draft, fixtureType: draft.fixtureType.trim() || undefined },
+                {
+                  ...draft,
+                  fixtureType: draft.fixtureType.trim() || undefined,
+                  expectedUpdatedAt: fixture.updatedAt,
+                },
                 { onSuccess: () => clearAfterSave() }
               )
             }
@@ -752,7 +773,7 @@ function FixtureDetailPanel({ fixture, storeId }: { fixture: Fixture; storeId: s
                   "Archive Fixture này? Toàn bộ Surface/Display Position bên dưới cũng sẽ bị Archive."
                 )
               ) {
-                mutate({ status: "Archived" });
+                mutate({ status: "Archived", expectedUpdatedAt: fixture.updatedAt });
               }
             }}
             className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
@@ -897,12 +918,16 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
     draft.heightMm !== surface.heightMm;
   const hasInvalidNumbers =
     !Number.isFinite(draft.widthMm) || draft.widthMm <= 0 || !Number.isFinite(draft.heightMm) || draft.heightMm <= 0;
+  useSyncDirty(isDirty);
 
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-ubl-secondary">Surface</h3>
-        <StatusBadge status={surface.status} />
+        <div className="flex items-center gap-2">
+          <UnsavedBadge isDirty={isDirty} />
+          <StatusBadge status={surface.status} />
+        </div>
       </div>
       <GeneralError error={error} />
 
@@ -940,7 +965,7 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
           <div className="flex gap-2">
             <button
               disabled={!isDirty || isPending || hasInvalidNumbers}
-              onClick={() => mutate(draft)}
+              onClick={() => mutate({ ...draft, expectedUpdatedAt: surface.updatedAt })}
               className="rounded bg-ubl-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-ubl-primary-dark disabled:opacity-50"
             >
               {isPending ? "Đang lưu..." : "Save"}
@@ -963,7 +988,7 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
           <button
             onClick={() => {
               if (confirm("Archive Surface này? Toàn bộ Display Position bên dưới cũng sẽ bị Archive.")) {
-                mutate({ status: "Archived" });
+                mutate({ status: "Archived", expectedUpdatedAt: surface.updatedAt });
               }
             }}
             className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
@@ -1221,7 +1246,12 @@ function DisplayPositionDetailPanel({
         <div className="flex gap-2">
           <button
             disabled={isPending || hasInvalidNumbers}
-            onClick={() => mutate(draft, { onSuccess: () => clearAfterSave() })}
+            onClick={() =>
+              mutate(
+                { ...draft, expectedUpdatedAt: position.updatedAt },
+                { onSuccess: () => clearAfterSave() }
+              )
+            }
             className="rounded bg-ubl-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-ubl-primary-dark disabled:opacity-50"
           >
             {isPending ? "Đang lưu..." : "Save"}
@@ -1276,7 +1306,7 @@ function DisplayPositionDetailPanel({
           <button
             onClick={() => {
               if (confirm("Archive Display Position này? Product Assignment liên quan cũng sẽ bị Archive.")) {
-                mutate({ status: "Archived" });
+                mutate({ status: "Archived", expectedUpdatedAt: position.updatedAt });
               }
             }}
             className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
@@ -1324,7 +1354,7 @@ function AssignmentSection({ position }: { position: DisplayPosition }) {
           disabled={isPending}
           onClick={() => {
             if (confirm("Gỡ Product khỏi Display Position này? (Assignment chuyển Archived)")) {
-              updateAssignment({ status: "Archived" });
+              updateAssignment({ status: "Archived", expectedUpdatedAt: active.updatedAt });
             }
           }}
           className="mt-2 rounded border border-red-200 bg-white px-2 py-1 text-xs text-red-600 hover:bg-red-50"

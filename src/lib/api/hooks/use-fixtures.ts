@@ -50,6 +50,7 @@ export type UpdateFixtureBody = Partial<{
   positionY: number;
   rotationDegree: number;
   status: EntityStatus;
+  expectedUpdatedAt: string;
 }>;
 
 export function useUpdateFixture(fixtureId: string, storeId: string) {

@@ -189,15 +189,16 @@ Phase 1 phải kéo sớm một phần nhỏ của Part 09 §4 (vốn ghi là Ph
 Không kéo thêm gì khác từ Phase 2 (Snap/Alignment/Multi-select/Version History/Undo-Redo vẫn để
 Phase 2 đúng như spec).
 
-## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 4, 2026-08-11)
+## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 5, 2026-08-12)
 
 **Git/GitHub:**
 - Repo đã push lên GitHub thành công: `https://github.com/tramdangtai/ubl-digital-twin`, branch `main`.
-  Git identity local đã set (`tramdangtai <tramdangtai.work@gmail.com>`). Commit gần nhất cho Giai đoạn
-  1-3: `beeb939`. **Giai đoạn 4 (bên dưới) chưa commit** — còn nằm ở working tree.
-- Máy **giờ đã có credential GitHub cache** (Git Credential Manager) — `git push` chạy thẳng không cần
-  đăng nhập lại, không như lúc đầu dự án (khi đó chưa có `gh` CLI/credential nào, phải nhờ Tài đăng nhập
-  thủ công 1 lần).
+  Git identity local đã set (`tramdangtai <tramdangtai.work@gmail.com>`). Lịch sử commit: `4ed03f2`
+  (Giai đoạn 1-2) → `beeb939` (Giai đoạn 3) → `97b0094` (Giai đoạn 4). **Giai đoạn 5 (bên dưới) chưa
+  commit** — còn nằm ở working tree.
+- Máy **có credential GitHub cache** (Git Credential Manager) — `git push` chạy thẳng không cần đăng
+  nhập lại, không như lúc đầu dự án (khi đó chưa có `gh` CLI/credential nào, phải nhờ Tài đăng nhập thủ
+  công 1 lần).
 
 **Bug đã điều tra và đóng (không phải bug code):** Tài báo "click Save không lưu, hiện Failed to
 fetch". Nguyên nhân: dev server (`npm run dev`) không chạy lúc đó — không phải lỗi trong code. Đã verify
@@ -324,13 +325,50 @@ có thật trong Supabase. **Bài học: trước khi test app, luôn chạy `np
   ACTIVE_ASSIGNMENT_EXISTS`) → facing_qty vượt facing_limit bị chặn (`422 EXCEEDS_FACING_LIMIT`) →
   Unassign (archive assignment) → Position trở lại trạng thái trống.
 
+**Giai đoạn 5 (Hoàn thiện vòng đời dữ liệu) đã xong:**
+- **Optimistic concurrency (quyết định #9) implement đầy đủ**: schema mới `expectedUpdatedAt` (optional
+  string) trong `src/lib/validation/common.ts`, thêm vào cả 7 update schema (retailer/store/fixture/
+  surface/display-position/product/product-assignment). Helper dùng chung
+  `src/lib/services/concurrency.ts` (`assertNotStale`) — so sánh `new Date(expectedUpdatedAt).getTime()`
+  với `existing.updatedAt.getTime()` trong DB, khác nhau → ném `ConflictError` (409, code
+  `STALE_UPDATE`). Mọi Service update function gọi hàm này ngay sau khi fetch bản ghi hiện tại, trước
+  khi ghi; field `expectedUpdatedAt` luôn bị strip khỏi payload trước khi đưa vào Drizzle `.set()`.
+  Frontend: mọi `mutate()` ở Inspector (Retailer/Store/Fixture/Surface/Display Position/Product Detail
+  Panel, kể cả nút Archive và Unassign) đều gửi kèm `expectedUpdatedAt: <entity>.updatedAt` lấy từ dữ
+  liệu Persisted đang hiển thị. **Verified qua API trực tiếp**: mô phỏng 2 "user" cùng sửa 1 Retailer —
+  user B save trước (200, `updatedAt` đổi), user A save sau bằng `updatedAt` cũ (cùng lúc đọc) → đúng
+  `409 STALE_UPDATE` với message rõ ràng, dữ liệu KHÔNG bị user A ghi đè. Cũng verified luồng bình
+  thường qua UI thật (Save không conflict → 200, cập nhật đúng).
+- **Navigation guard cho Draft dạng local-state** (Retailer/Store/Surface/Product Detail Panel — 4 entity
+  này dùng `useState` cho Draft, KHÔNG có Zustand draft store riêng như Fixture/Display Position nên
+  chuyển selection sẽ unmount và mất Draft im lặng nếu không chặn). Store mới
+  `src/lib/state/unsaved-changes.ts` (`useUnsavedChangesStore` + `confirmDiscardUnsavedChanges()`) — 4
+  panel trên tự đồng bộ `isDirty` vào đây qua hook dùng chung `useSyncDirty()`
+  (`inspector-shared.tsx`). Mọi action đổi selection/tab trong `selection.ts` (selectRetailer,
+  selectStore, selectFixture, selectSurface, selectDisplayPosition, selectProduct, setExplorerTab, và
+  các startCreate*) gọi `confirmDiscardUnsavedChanges()` trước — nếu đang dirty thì hiện
+  `window.confirm()`, Cancel = huỷ điều hướng (giữ nguyên Draft), OK = cho đi tiếp (mất Draft, đúng Part
+  05 §29 — không tự động discard mà không hỏi). Fixture/Display Position KHÔNG cần cờ này vì Draft của
+  chúng nằm trong Zustand store riêng, sống độc lập với selection (đã verify từ Giai đoạn 2/3 là không
+  mất khi điều hướng qua lại). Thêm `useBeforeUnloadGuard()` (gọi ở `digital-twin/page.tsx`) — cảnh báo
+  trình duyệt khi đóng tab/refresh lúc còn Draft chưa lưu (gộp cả local-state Draft lẫn 2 Zustand draft
+  store kia). **Verified qua browser thật**: sửa Retailer Name (chưa Save) → click sang Retailer khác →
+  patch `window.confirm` trả `false` → điều hướng bị chặn, Draft còn nguyên, badge "Unsaved changes"
+  hiện đúng cạnh Status badge → patch `window.confirm` trả `true` → điều hướng thành công, Draft bị
+  discard đúng (tên trở lại giá trị gốc, không lưu xuống DB).
+- **Unsaved Changes indicator**: badge nhỏ "Unsaved changes" (`UnsavedBadge` trong `inspector-shared.tsx`)
+  hiện cạnh `StatusBadge` ở header của 4 panel trên khi `isDirty === true`, biến mất ngay sau Save thành
+  công hoặc Cancel.
+- Error handling: message 409 `STALE_UPDATE` hiển thị qua `GeneralError` (component có sẵn từ Giai đoạn
+  1) — không cần thêm UI mới, chỉ cần đảm bảo message tiếng Việt rõ ràng ("Dữ liệu đã bị người khác thay
+  đổi... Vui lòng tải lại và thử lại.").
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` đều sạch.
+
 ### Milestone tiếp theo
 
-**Giai đoạn 5 — Hoàn thiện vòng đời dữ liệu**: Draft/Unsaved indicator rõ ràng hơn (hiện tại Save/Cancel
-đã đúng nhưng chưa có "Unsaved Changes *" hiển thị chủ động — Part 05 §28), navigation guard khi rời
-Draft chưa lưu (Part 05 §29, hiện đang "orphan" Draft an toàn nhưng chưa hỏi user), optimistic
-concurrency dựa trên `updated_at` (quyết định #9 — chưa implement), error handling toàn diện hơn. Xem
-bảng 7 giai đoạn đầy đủ trong lịch sử chat.
+**Giai đoạn 6 — Auth & Authorization**: Supabase Auth, role model Admin/Editor/Viewer (quyết định #1),
+Permission Matrix cụ thể chốt lúc implement. **Giai đoạn 7 — Testing & Deploy**: thêm test runner
+(Vitest/Playwright), CI, deploy production. Xem bảng 7 giai đoạn đầy đủ trong lịch sử chat.
 
 ## Commands
 

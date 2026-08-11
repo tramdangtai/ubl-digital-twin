@@ -41,6 +41,7 @@ export type UpdateProductAssignmentBody = Partial<{
   startDate: string | null;
   endDate: string | null;
   status: EntityStatus;
+  expectedUpdatedAt: string;
 }>;
 
 export function useUpdateProductAssignment(assignmentId: string, positionId: string) {

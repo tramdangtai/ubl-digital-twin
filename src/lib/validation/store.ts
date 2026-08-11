@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { entityStatusSchema, uuidSchema } from "./common";
+import { entityStatusSchema, expectedUpdatedAtSchema, uuidSchema } from "./common";
 
 export const createStoreSchema = z.object({
   retailerId: uuidSchema,
@@ -14,6 +14,7 @@ export const updateStoreSchema = z.object({
   storeName: z.string().trim().min(1).optional(),
   address: z.string().trim().optional(),
   status: entityStatusSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
 });
 
 export type CreateStoreInput = z.infer<typeof createStoreSchema>;

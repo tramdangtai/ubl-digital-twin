@@ -67,6 +67,7 @@ export type UpdateProductBody = Partial<{
   heightMm: number | null;
   depthMm: number | null;
   status: EntityStatus;
+  expectedUpdatedAt: string;
 }>;
 
 export function useUpdateProduct(productId: string) {

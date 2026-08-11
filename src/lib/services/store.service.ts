@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { retailer, store } from "../db/schema";
 import type { CreateStoreInput, UpdateStoreInput } from "../validation/store";
 import { archiveStoreSubtree } from "./cascade";
+import { assertNotStale } from "./concurrency";
 
 export async function listStores(retailerId?: string, includeArchived = false) {
   const conditions = [];
@@ -51,7 +52,8 @@ export async function createStore(input: CreateStoreInput) {
 }
 
 export async function updateStore(storeId: string, input: UpdateStoreInput) {
-  await getStore(storeId);
+  const existing = await getStore(storeId);
+  assertNotStale(input.expectedUpdatedAt, existing.updatedAt);
 
   if (input.status === "Archived") {
     return db.transaction(async (tx) => {

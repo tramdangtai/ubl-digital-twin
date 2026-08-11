@@ -47,6 +47,7 @@ export type UpdateDisplayPositionBody = Partial<{
   facingLimit: number | null;
   sortOrder: number;
   status: EntityStatus;
+  expectedUpdatedAt: string;
 }>;
 
 export function useUpdateDisplayPosition(positionId: string, surfaceId: string) {

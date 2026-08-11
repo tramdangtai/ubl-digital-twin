@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
+
 import { ApiRequestError } from "@/lib/api/client";
+import { useUnsavedChangesStore } from "@/lib/state/unsaved-changes";
 
 export function FieldErrors({ error, field }: { error: unknown; field: string }) {
   if (!(error instanceof ApiRequestError)) return null;
@@ -51,6 +54,28 @@ export function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted">{label}</span>
       <span className="font-medium text-foreground">{value}</span>
     </div>
+  );
+}
+
+/**
+ * Đồng bộ isDirty của Draft local-state (Retailer/Store/Surface/Product Detail
+ * Panel) vào store dùng chung, để selection.ts biết mà chặn điều hướng khi
+ * đang có thay đổi chưa lưu (Part 05 §29). Tự dọn về false khi unmount.
+ */
+export function useSyncDirty(isDirty: boolean) {
+  const setDirty = useUnsavedChangesStore((s) => s.setDirty);
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+  useEffect(() => () => setDirty(false), [setDirty]);
+}
+
+export function UnsavedBadge({ isDirty }: { isDirty: boolean }) {
+  if (!isDirty) return null;
+  return (
+    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+      Unsaved changes
+    </span>
   );
 }
 
