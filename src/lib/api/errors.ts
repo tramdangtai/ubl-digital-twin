@@ -87,6 +87,11 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, FieldError> = {
     code: "DUPLICATE_VALUE",
     message: "Item Code đã tồn tại.",
   },
+  uq_assignment_active_position: {
+    field: "positionId",
+    code: "ACTIVE_ASSIGNMENT_EXISTS",
+    message: "Display Position này đã có Product Assignment Active — hãy Archive assignment cũ trước.",
+  },
 };
 
 /**

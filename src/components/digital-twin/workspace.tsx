@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 
 import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
+import { useProductAssignments } from "@/lib/api/hooks/use-product-assignments";
+import { useProduct } from "@/lib/api/hooks/use-products";
 import { useStores } from "@/lib/api/hooks/use-stores";
 import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
 import { OWNER_VISUAL } from "@/lib/constants";
@@ -462,6 +464,17 @@ function DisplayPositionShape({
 }) {
   const rect = positionScreenRect(geometry, scale, panX, panY);
 
+  // Part 07 §16-17: Display Position có Active Assignment → render Product;
+  // trống → render Empty placeholder. Không tự tạo Assignment ở đây, chỉ đọc.
+  const { data: assignments } = useProductAssignments(position.positionId);
+  const active = assignments?.find((a) => a.status === "Active");
+  const { data: activeProduct } = useProduct(active?.productId);
+
+  const occupiedFill = "#dcfce7";
+  const occupiedStroke = "#16a34a";
+  const emptyFill = "#eef2ff";
+  const emptyStroke = "#6366f1";
+
   return (
     <g
       onPointerDown={(e) => {
@@ -475,8 +488,8 @@ function DisplayPositionShape({
         y={rect.y}
         width={rect.width}
         height={rect.height}
-        fill="#eef2ff"
-        stroke="#6366f1"
+        fill={active ? occupiedFill : emptyFill}
+        stroke={active ? occupiedStroke : emptyStroke}
         strokeWidth={selected ? 2.5 : 1.25}
         strokeDasharray={editing ? "6 3" : undefined}
         rx={2}
@@ -495,8 +508,19 @@ function DisplayPositionShape({
         />
       )}
       {rect.width > 30 && (
-        <text x={rect.x + 4} y={rect.y + 12} fontSize={9} fill="#312e81" className="select-none">
-          {position.displayType}
+        <text
+          x={rect.x + 4}
+          y={rect.y + 12}
+          fontSize={9}
+          fill={active ? "#14532d" : "#312e81"}
+          className="select-none"
+        >
+          {active ? activeProduct?.description ?? "..." : position.displayType}
+        </text>
+      )}
+      {active && rect.width > 30 && rect.height > 26 && (
+        <text x={rect.x + 4} y={rect.y + 23} fontSize={8} fill="#166534" className="select-none">
+          {activeProduct?.itemCode ?? ""}
         </text>
       )}
       {editing && (

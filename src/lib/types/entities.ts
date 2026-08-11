@@ -95,3 +95,32 @@ export interface DisplayPositionEditableFields {
   capacity: number | null;
   facingLimit: number | null;
 }
+
+export interface Product {
+  productId: string;
+  itemCode: string;
+  description: string;
+  category: string | null;
+  productGroup: string | null;
+  brand: string | null;
+  imageUrl: string | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  depthMm: number | null;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductAssignment {
+  assignmentId: string;
+  positionId: string;
+  productId: string;
+  facingQty: number;
+  displayOrder: number;
+  startDate: string | null;
+  endDate: string | null;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}

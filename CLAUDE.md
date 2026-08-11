@@ -189,17 +189,15 @@ Phase 1 phải kéo sớm một phần nhỏ của Part 09 §4 (vốn ghi là Ph
 Không kéo thêm gì khác từ Phase 2 (Snap/Alignment/Multi-select/Version History/Undo-Redo vẫn để
 Phase 2 đúng như spec).
 
-## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 3, 2026-08-11)
+## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 4, 2026-08-11)
 
 **Git/GitHub:**
-- Repo đã commit (`4ed03f2`, Giai đoạn 1-2) và **push lên GitHub thành công**:
-  `https://github.com/tramdangtai/ubl-digital-twin`, branch `main`. Git identity local đã set
-  (`tramdangtai <tramdangtai.work@gmail.com>`) — máy chưa có global git config, chưa có credential
-  cache cho GitHub (không có `gh` CLI, Git Credential Manager chưa login) → mọi lần push sau này Tài
-  phải tự chạy `git push` từ terminal của Tài (sẽ mở browser xác thực), Claude không tự push được nếu
-  không có token dán tay vào chat.
-- **Các file/thay đổi của Giai đoạn 3 (xem bên dưới) CHƯA được commit** — còn nằm ở working tree, commit
-  sau khi Tài xác nhận.
+- Repo đã push lên GitHub thành công: `https://github.com/tramdangtai/ubl-digital-twin`, branch `main`.
+  Git identity local đã set (`tramdangtai <tramdangtai.work@gmail.com>`). Commit gần nhất cho Giai đoạn
+  1-3: `beeb939`. **Giai đoạn 4 (bên dưới) chưa commit** — còn nằm ở working tree.
+- Máy **giờ đã có credential GitHub cache** (Git Credential Manager) — `git push` chạy thẳng không cần
+  đăng nhập lại, không như lúc đầu dự án (khi đó chưa có `gh` CLI/credential nào, phải nhờ Tài đăng nhập
+  thủ công 1 lần).
 
 **Bug đã điều tra và đóng (không phải bug code):** Tài báo "click Save không lưu, hiện Failed to
 fetch". Nguyên nhân: dev server (`npm run dev`) không chạy lúc đó — không phải lỗi trong code. Đã verify
@@ -291,11 +289,48 @@ có thật trong Supabase. **Bài học: trước khi test app, luôn chạy `np
 - **Chưa có**: Product/Product Assignment — chưa có Service/API/UI (dù đã có Table+Constraint từ
   Giai đoạn 1).
 
+**Giai đoạn 4 (Product Library + Product Assignment) đã xong:**
+- Backend: `src/lib/validation/{product,product-assignment}.ts`,
+  `src/lib/services/{product,product-assignment}.service.ts`,
+  `src/app/api/{products,product-assignments}/**`. Product list có search (ILIKE trên item_code/
+  description/category/product_group/brand) + offset pagination (quyết định #10). Assignment validate:
+  Position/Product phải Active, `facing_qty <= facing_limit` (cross-table, service layer), tối đa 1
+  Active Assignment/Position (DB partial unique `uq_assignment_active_position`, đã có sẵn từ Giai
+  đoạn 1 schema).
+- **Quyết định implement mới**: Archive Product KHÔNG cascade xuống Product Assignment đang tham chiếu
+  nó (khác với Retailer/Store/Fixture/Surface/Position — những cái đó cascade xuống con). Lý do: Product
+  không nằm trong cây hierarchy Digital Twin (Part 02 §3.6, độc lập), archive chỉ chặn *tạo Assignment
+  mới* với Product đó, không đụng lịch sử đã có. Ghi lại vì đây là điểm dễ nhầm với pattern cascade ở
+  các entity khác.
+- **API response envelope mở rộng**: thêm `apiSuccessPaginated()` trong `response.ts`, trả thêm field
+  `meta: {page, pageSize, total}` bên cạnh `data` — Part 06 gốc chưa định nghĩa Pagination Envelope,
+  đây là implement decision (additive, không phá cấu trúc `{success, data, message}` cũ).
+- UI: Explorer thêm 2 tab "Digital Twin" / "Product Library" (`explorerTab` trong `selection.ts`) vì
+  Product Library **không thuộc** cây hierarchy Digital Twin (Part 04 §4) — không lồng trong Explorer
+  tree như Fixture/Surface/Position. Đúng nguyên tắc Part 04 §13 "Product Selection ≠ Product
+  Assignment": chọn Product chỉ đổi `selectedProductId`, không tự tạo Assignment.
+- Tách `inspector.tsx` (đã hơn 1600 dòng) thành `inspector-shared.tsx` (UI primitives dùng chung:
+  FieldErrors, GeneralError, NumberField, DetailRow, StatusBadge) + `product-panels.tsx`
+  (CreateProductPanel, ProductDetailPanel, AssignProductPanel) — điểm hợp lý để chia file, không phải
+  chia sớm.
+- `DisplayPositionDetailPanel` hiện thêm khối "Đang trưng bày: [Product] — Unassign" khi có Active
+  Assignment, hoặc gợi ý "chưa gán" khi chưa có.
+- `Workspace.tsx`: Display Position có Active Assignment → đổi màu xanh lá + hiện tên/item_code Product
+  thay vì chỉ display_type (Part 07 §16-17). Chấp nhận N+1 query nhỏ (1 request/position cho
+  assignment+product) thay vì viết API batch riêng — hợp lý với quy mô nhỏ (quyết định #10), có thể tối
+  ưu sau nếu thực tế thấy chậm khi 1 Surface có hàng trăm Display Position.
+- Đã test đầy đủ qua browser thật + API: tạo Product → gán vào Display Position → Workspace hiện đúng
+  tên Product màu xanh → **refresh vẫn đúng** → gán lần 2 vào cùng Position bị chặn (`409
+  ACTIVE_ASSIGNMENT_EXISTS`) → facing_qty vượt facing_limit bị chặn (`422 EXCEEDS_FACING_LIMIT`) →
+  Unassign (archive assignment) → Position trở lại trạng thái trống.
+
 ### Milestone tiếp theo
 
-**Giai đoạn 4 — Product Library + Product Assignment**: Product CRUD, import Excel (theo quyết định
-#12), search/filter, gán Product vào Display Position (Assign Mode, Part 04 §13-14 — Product Selection
-≠ Product Assignment). Xem bảng 7 giai đoạn đầy đủ trong lịch sử chat.
+**Giai đoạn 5 — Hoàn thiện vòng đời dữ liệu**: Draft/Unsaved indicator rõ ràng hơn (hiện tại Save/Cancel
+đã đúng nhưng chưa có "Unsaved Changes *" hiển thị chủ động — Part 05 §28), navigation guard khi rời
+Draft chưa lưu (Part 05 §29, hiện đang "orphan" Draft an toàn nhưng chưa hỏi user), optimistic
+concurrency dựa trên `updated_at` (quyết định #9 — chưa implement), error handling toàn diện hơn. Xem
+bảng 7 giai đoạn đầy đủ trong lịch sử chat.
 
 ## Commands
 

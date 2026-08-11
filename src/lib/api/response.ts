@@ -12,6 +12,22 @@ export function apiCreated<T>(data: T, message = "") {
   return apiSuccess(data, message, 201);
 }
 
+export interface PaginationMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+/**
+ * Envelope cho list API có pagination (Product Library — quy mô ~4000 SKU,
+ * offset pagination theo quyết định #10). Part 06 chưa định nghĩa Pagination
+ * Envelope chính thức — đây là implement decision: thêm field `meta` bên
+ * cạnh `data`, không phá cấu trúc envelope gốc.
+ */
+export function apiSuccessPaginated<T>(data: T[], meta: PaginationMeta, message = "") {
+  return NextResponse.json({ success: true, data, message, meta }, { status: 200 });
+}
+
 /**
  * Bắt mọi error từ Service/Route Handler và dịch sang Response envelope
  * chuẩn. Không bao giờ trả stack trace / SQL / tên bảng cho Frontend

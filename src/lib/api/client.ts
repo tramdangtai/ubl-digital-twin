@@ -4,8 +4,13 @@
  */
 
 export type ApiFieldError = { field?: string; code: string; message?: string };
+export interface PaginationMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+}
 type ApiEnvelope<T> =
-  | { success: true; data: T; message: string }
+  | { success: true; data: T; message: string; meta?: PaginationMeta }
   | { success: false; message: string; errors: ApiFieldError[] };
 
 export class ApiRequestError extends Error {
@@ -20,7 +25,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestEnvelope<T>(path: string, init?: RequestInit): Promise<ApiEnvelope<T> & { success: true }> {
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -31,11 +36,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!body.success) {
     throw new ApiRequestError(body.message, res.status, body.errors);
   }
+  return body;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const body = await requestEnvelope<T>(path, init);
   return body.data;
 }
 
 export const apiClient = {
   get: <T>(path: string) => request<T>(path),
+  /** Dùng cho list API có pagination — trả cả `data` và `meta` (page/pageSize/total). */
+  getWithMeta: async <T>(path: string): Promise<{ data: T; meta: PaginationMeta }> => {
+    const body = await requestEnvelope<T>(path);
+    return { data: body.data, meta: body.meta ?? { page: 1, pageSize: 0, total: 0 } };
+  },
   post: <T>(path: string, data: unknown) =>
     request<T>(path, { method: "POST", body: JSON.stringify(data) }),
   patch: <T>(path: string, data: unknown) =>
