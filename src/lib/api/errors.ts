@@ -58,9 +58,8 @@ type PostgresJsError = Error & {
 };
 
 /**
- * Bảng ánh xạ tên constraint → field/message thân thiện. Chỉ cần cover các
- * constraint đã có API mutation ở Giai đoạn 1 (Retailer, Store); mở rộng dần
- * khi thêm entity mới.
+ * Bảng ánh xạ tên constraint → field/message thân thiện. Mở rộng dần khi
+ * thêm entity mới có unique constraint.
  */
 const UNIQUE_CONSTRAINT_MESSAGES: Record<string, FieldError> = {
   uq_retailer_code: {
@@ -72,6 +71,21 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, FieldError> = {
     field: "storeCode",
     code: "DUPLICATE_VALUE",
     message: "Store Code đã tồn tại.",
+  },
+  uq_fixture_code: {
+    field: "fixtureCode",
+    code: "DUPLICATE_VALUE",
+    message: "Fixture Code đã tồn tại.",
+  },
+  uq_surface_active_orientation: {
+    field: "orientation",
+    code: "DUPLICATE_VALUE",
+    message: "Fixture này đã có Surface Active với orientation này rồi.",
+  },
+  uq_product_item_code: {
+    field: "itemCode",
+    code: "DUPLICATE_VALUE",
+    message: "Item Code đã tồn tại.",
   },
 };
 

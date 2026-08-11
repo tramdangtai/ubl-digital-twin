@@ -6,6 +6,44 @@ import { displayPosition, fixture, productAssignment, retailer, store, surface }
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
+ * Archive toàn bộ subtree bên dưới một tập Display Position (Product
+ * Assignment) rồi archive chính các Display Position đó.
+ */
+async function archiveDisplayPositionIdsSubtree(tx: Tx, positionIds: string[]) {
+  if (positionIds.length === 0) return;
+
+  await tx
+    .update(productAssignment)
+    .set({ status: "Archived" })
+    .where(inArray(productAssignment.positionId, positionIds));
+
+  await tx
+    .update(displayPosition)
+    .set({ status: "Archived" })
+    .where(inArray(displayPosition.positionId, positionIds));
+}
+
+/**
+ * Archive toàn bộ subtree bên dưới một tập Surface (Display Position →
+ * Product Assignment) rồi archive chính các Surface đó.
+ */
+async function archiveSurfaceIdsSubtree(tx: Tx, surfaceIds: string[]) {
+  if (surfaceIds.length === 0) return;
+
+  const positions = await tx
+    .select({ positionId: displayPosition.positionId })
+    .from(displayPosition)
+    .where(inArray(displayPosition.surfaceId, surfaceIds));
+
+  await archiveDisplayPositionIdsSubtree(
+    tx,
+    positions.map((p) => p.positionId)
+  );
+
+  await tx.update(surface).set({ status: "Archived" }).where(inArray(surface.surfaceId, surfaceIds));
+}
+
+/**
  * Archive toàn bộ subtree bên dưới một tập Fixture (Surface → Display
  * Position → Product Assignment) rồi archive chính các Fixture đó.
  * Dùng chung cho archiveFixtureSubtree (1 fixture) và archiveStoreSubtree
@@ -18,30 +56,29 @@ async function archiveFixtureIdsSubtree(tx: Tx, fixtureIds: string[]) {
     .select({ surfaceId: surface.surfaceId })
     .from(surface)
     .where(inArray(surface.fixtureId, fixtureIds));
-  const surfaceIds = surfaces.map((s) => s.surfaceId);
 
-  if (surfaceIds.length > 0) {
-    const positions = await tx
-      .select({ positionId: displayPosition.positionId })
-      .from(displayPosition)
-      .where(inArray(displayPosition.surfaceId, surfaceIds));
-    const positionIds = positions.map((p) => p.positionId);
+  await archiveSurfaceIdsSubtree(
+    tx,
+    surfaces.map((s) => s.surfaceId)
+  );
 
-    if (positionIds.length > 0) {
-      await tx
-        .update(productAssignment)
-        .set({ status: "Archived" })
-        .where(inArray(productAssignment.positionId, positionIds));
-    }
-
-    await tx
-      .update(displayPosition)
-      .set({ status: "Archived" })
-      .where(inArray(displayPosition.surfaceId, surfaceIds));
-  }
-
-  await tx.update(surface).set({ status: "Archived" }).where(inArray(surface.fixtureId, fixtureIds));
   await tx.update(fixture).set({ status: "Archived" }).where(inArray(fixture.fixtureId, fixtureIds));
+}
+
+/**
+ * Archive 1 Display Position + Product Assignment đang Active bên dưới nó.
+ * Phải gọi bên trong transaction của caller.
+ */
+export async function archiveDisplayPositionSubtree(tx: Tx, positionId: string) {
+  await archiveDisplayPositionIdsSubtree(tx, [positionId]);
+}
+
+/**
+ * Archive 1 Surface + toàn bộ subtree (Display Position → Product
+ * Assignment). Phải gọi bên trong transaction của caller.
+ */
+export async function archiveSurfaceSubtree(tx: Tx, surfaceId: string) {
+  await archiveSurfaceIdsSubtree(tx, [surfaceId]);
 }
 
 /**

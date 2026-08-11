@@ -189,7 +189,22 @@ Phase 1 phải kéo sớm một phần nhỏ của Part 09 §4 (vốn ghi là Ph
 Không kéo thêm gì khác từ Phase 2 (Snap/Alignment/Multi-select/Version History/Undo-Redo vẫn để
 Phase 2 đúng như spec).
 
-## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 2, 2026-08-11)
+## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 3, 2026-08-11)
+
+**Git/GitHub:**
+- Repo đã commit (`4ed03f2`, Giai đoạn 1-2) và **push lên GitHub thành công**:
+  `https://github.com/tramdangtai/ubl-digital-twin`, branch `main`. Git identity local đã set
+  (`tramdangtai <tramdangtai.work@gmail.com>`) — máy chưa có global git config, chưa có credential
+  cache cho GitHub (không có `gh` CLI, Git Credential Manager chưa login) → mọi lần push sau này Tài
+  phải tự chạy `git push` từ terminal của Tài (sẽ mở browser xác thực), Claude không tự push được nếu
+  không có token dán tay vào chat.
+- **Các file/thay đổi của Giai đoạn 3 (xem bên dưới) CHƯA được commit** — còn nằm ở working tree, commit
+  sau khi Tài xác nhận.
+
+**Bug đã điều tra và đóng (không phải bug code):** Tài báo "click Save không lưu, hiện Failed to
+fetch". Nguyên nhân: dev server (`npm run dev`) không chạy lúc đó — không phải lỗi trong code. Đã verify
+kỹ: tạo Retailer/Store/Fixture bằng click thật sau khi bật lại server → tất cả `201 Created`, dữ liệu
+có thật trong Supabase. **Bài học: trước khi test app, luôn chạy `npm run dev` và đợi dòng `✓ Ready`.**
 
 **Giai đoạn 1 (Nền móng) đã xong:**
 - Repo đã `git init` (chưa commit — commit khi Tài xác nhận).
@@ -239,11 +254,48 @@ Phase 2 đúng như spec).
   Đoạn 2"/ST-G2, Fixture "FX-001" đã Archived để test cascade, + data test Giai đoạn 1) — an toàn để
   xoá tay hoặc giữ làm demo.
 
+**Giai đoạn 3 (Surface View + Display Position) đã xong:**
+- Migration `drizzle/0003_surface_active_orientation_unique.sql` — 1 Fixture không được có 2 Surface
+  Active cùng orientation (partial unique index) — đã apply thật lên Supabase, verified qua API
+  (tạo trùng "Front" → `409 DUPLICATE_VALUE`, tạo "Back" khác orientation → thành công).
+- Backend đầy đủ: `src/lib/validation/{surface,display-position}.ts`,
+  `src/lib/services/{surface,display-position}.service.ts`,
+  `src/app/api/{surfaces,display-positions,display-positions/bulk}/**`. Bulk-generate validate "lưới
+  không vượt kích thước Surface" (verified: lưới 3000×3000mm trên Surface 1800×2100mm → `422
+  GRID_EXCEEDS_SURFACE`) + giới hạn `rows*columns <= 500`/lần gọi.
+- `cascade.ts` refactor thành 3 lớp (`archiveDisplayPositionIdsSubtree` → `archiveSurfaceIdsSubtree` →
+  `archiveFixtureIdsSubtree`), export thêm `archiveSurfaceSubtree`/`archiveDisplayPositionSubtree`.
+- Rendering: `positionScreenRect()` trong `coordinates.ts` (Surface-local, không rotation).
+- State: `selection.ts` mở rộng (`selectedSurfaceId`, `selectedDisplayPositionId`, 3 mode mới),
+  `bulk-generate-draft.ts` (preview lưới trước khi Save), `display-position-draft.ts` (Draft pattern
+  giống fixture-draft.ts — **chưa có drag-to-move trên canvas cho Display Position**, chỉnh qua
+  Inspector numeric field; có thể bổ sung sau nếu thực tế cần).
+- `Explorer.tsx`: cây điều hướng xuống tới Surface → Display Position, "+ Add Surface",
+  "+ Add Display Position", "+ Bulk Generate...".
+- `Inspector.tsx`: `CreateSurfacePanel`, `SurfaceDetailPanel`, `CreateDisplayPositionPanel`,
+  `DisplayPositionDetailPanel`, `BulkGeneratePanel` (preview lưới đồng bộ 2 chiều với Workspace qua
+  `bulk-generate-draft.ts`).
+- `Workspace.tsx`: thêm Surface View — khi chọn 1 Surface, canvas chuyển từ floor plan Store sang render
+  mặt Surface (origin trên-trái, y hướng xuống) + các Display Position bên trong + preview lưới
+  bulk-generate (viền chấm cam) + reset zoom/pan tự động khi đổi context giữa 2 view.
+- **Bug tìm thấy và đã sửa qua test thật:** lúc refactor `cascade.ts`, hàm `archiveSurfaceIdsSubtree`
+  archive đúng Display Position/Assignment bên dưới nhưng **chính Surface đó lại không chuyển
+  Archived** — do dòng `where(inArray(surface.fixtureId, surfaceIds))` nhầm cột (copy từ code Giai
+  đoạn 2 nhưng quên đổi `fixtureId` thành `surfaceId`). Phát hiện khi archive Surface qua API rồi
+  query thẳng DB thấy `status` vẫn `Active`. Đã sửa, verify lại cascade Fixture→Surface→Display
+  Position hoạt động đúng toàn chuỗi.
+- Đã test qua browser thật (click thật) + API trực tiếp: tạo Surface "Back" thứ 2 trên Fixture có sẵn
+  Surface "Front" (Giai đoạn 2 auto-tạo) → mở Surface View → Bulk Generate 3×4 lưới → preview live hiện
+  đúng 12 ô → Save → 12 Display Position xuất hiện đúng tọa độ trên canvas → chọn 1 vị trí, Edit
+  Width → render Draft live đúng → Save → DB đúng → refresh vẫn đúng.
+- **Chưa có**: Product/Product Assignment — chưa có Service/API/UI (dù đã có Table+Constraint từ
+  Giai đoạn 1).
+
 ### Milestone tiếp theo
 
-**Giai đoạn 3 — Surface View + Display Position**: chuyển view theo Surface (Front/Back/Left/Right/Top),
-tạo Display Position, **bulk-generate lưới** (rows×cols) — bắt buộc vì quyết định #2 (nhiều Display
-Position/Surface). Xem bảng 7 giai đoạn đầy đủ đã thống nhất với Tài trong lịch sử chat.
+**Giai đoạn 4 — Product Library + Product Assignment**: Product CRUD, import Excel (theo quyết định
+#12), search/filter, gán Product vào Display Position (Assign Mode, Part 04 §13-14 — Product Selection
+≠ Product Assignment). Xem bảng 7 giai đoạn đầy đủ trong lịch sử chat.
 
 ## Commands
 

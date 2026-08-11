@@ -2,14 +2,19 @@
 
 import { useEffect, useRef } from "react";
 
+import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
 import { useStores } from "@/lib/api/hooks/use-stores";
+import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
 import { OWNER_VISUAL } from "@/lib/constants";
-import { fixtureScreenRect, pxToMm } from "@/lib/rendering/coordinates";
+import { fixtureScreenRect, positionScreenRect, pxToMm } from "@/lib/rendering/coordinates";
+import type { BulkGenerateDraft } from "@/lib/state/bulk-generate-draft";
+import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
+import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
 import { useFixtureDraftStore } from "@/lib/state/fixture-draft";
 import { useSelectionStore } from "@/lib/state/selection";
 import { useWorkspaceViewStore } from "@/lib/state/workspace-view";
-import type { Fixture } from "@/lib/types/entities";
+import type { DisplayPosition, Fixture, Surface } from "@/lib/types/entities";
 
 interface FixtureGeometry {
   positionX: number;
@@ -19,16 +24,49 @@ interface FixtureGeometry {
   rotationDegree: number;
 }
 
+interface PositionGeometry {
+  x: number;
+  y: number;
+  widthMm: number;
+  heightMm: number;
+}
+
 export function Workspace() {
-  const { selectedStoreId, selectedFixtureId, mode, selectFixture } = useSelectionStore();
+  const {
+    selectedStoreId,
+    selectedFixtureId,
+    selectedSurfaceId,
+    selectedDisplayPositionId,
+    mode,
+    selectFixture,
+    selectDisplayPosition,
+  } = useSelectionStore();
   const { data: stores } = useStores();
   const { data: fixtures } = useFixtures(selectedStoreId ?? undefined);
+  const { data: surfaces } = useSurfaces(selectedFixtureId ?? undefined);
+  const { data: positions } = useDisplayPositions(selectedSurfaceId ?? undefined);
   const store = stores?.find((s) => s.storeId === selectedStoreId);
+  const surface = surfaces?.find((s) => s.surfaceId === selectedSurfaceId);
 
   const { scale, panX, panY, zoomBy, panBy, resetView } = useWorkspaceViewStore();
-  const { editingFixtureId, draft } = useFixtureDraftStore();
+  const { editingFixtureId, draft: fixtureDraft } = useFixtureDraftStore();
+  const { editingPositionId, draft: positionDraft } = useDisplayPositionDraftStore();
+  const { draft: bulkDraft } = useBulkGenerateDraftStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const isSurfaceView = Boolean(selectedSurfaceId && surface);
+
+  // Đổi context giữa floor-plan (Store) và Surface View là đổi hệ tọa độ hoàn
+  // toàn khác nhau (mm khác nhau, gốc khác nhau) — reset zoom/pan để tránh
+  // scale/pan cũ từ context trước gây khó hiểu.
+  const prevContextRef = useRef<"store" | "surface" | null>(null);
+  useEffect(() => {
+    const current: "store" | "surface" | null = isSurfaceView ? "surface" : store ? "store" : null;
+    if (current && prevContextRef.current && current !== prevContextRef.current) {
+      resetView();
+    }
+    prevContextRef.current = current;
+  }, [isSurfaceView, store, resetView]);
 
   // Wheel zoom — native listener non-passive để preventDefault chặn page scroll.
   useEffect(() => {
@@ -42,7 +80,7 @@ export function Workspace() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoomBy]);
 
-  // Pan bằng kéo nền canvas (không phải kéo Fixture — xem stopPropagation trong FixtureShape).
+  // Pan bằng kéo nền canvas (không phải kéo Fixture — xem stopPropagation trong các Shape).
   const panDragRef = useRef<{ lastX: number; lastY: number } | null>(null);
   useEffect(() => {
     function onMove(e: PointerEvent) {
@@ -80,10 +118,98 @@ export function Workspace() {
     );
   }
 
+  let title: string;
+  let content: React.ReactNode;
+  let emptyMessage: string | null = null;
+
+  if (isSurfaceView && surface) {
+    title = `${store.storeName} — ${surface.surfaceName || surface.orientation}`;
+    content = (
+      <>
+        <SurfaceBoundsShape surface={surface} scale={scale} panX={panX} panY={panY} />
+
+        {positions?.map((p) => {
+          const editing = editingPositionId === p.positionId;
+          const geometry: PositionGeometry =
+            editing && positionDraft
+              ? {
+                  x: positionDraft.x,
+                  y: positionDraft.y,
+                  widthMm: positionDraft.widthMm,
+                  heightMm: positionDraft.heightMm,
+                }
+              : { x: p.x, y: p.y, widthMm: p.widthMm, heightMm: p.heightMm };
+
+          return (
+            <DisplayPositionShape
+              key={p.positionId}
+              position={p}
+              geometry={geometry}
+              scale={scale}
+              panX={panX}
+              panY={panY}
+              selected={selectedDisplayPositionId === p.positionId}
+              editing={editing}
+              onSelect={() => selectDisplayPosition(surface.surfaceId, p.positionId)}
+            />
+          );
+        })}
+
+        {bulkDraft && <BulkGeneratePreview draft={bulkDraft} scale={scale} panX={panX} panY={panY} />}
+      </>
+    );
+    if ((positions?.length ?? 0) === 0 && !bulkDraft) {
+      emptyMessage =
+        "Chưa có Display Position. Bấm “+ Add Display Position” hoặc “+ Bulk Generate...” ở Explorer.";
+    }
+  } else {
+    title = store.storeName;
+    content = (
+      <>
+        {fixtures?.map((f) => {
+          const isEditing = editingFixtureId === f.fixtureId;
+          const geometry: FixtureGeometry =
+            isEditing && fixtureDraft
+              ? {
+                  positionX: fixtureDraft.positionX,
+                  positionY: fixtureDraft.positionY,
+                  widthMm: fixtureDraft.widthMm,
+                  depthMm: fixtureDraft.depthMm,
+                  rotationDegree: fixtureDraft.rotationDegree,
+                }
+              : {
+                  positionX: f.positionX,
+                  positionY: f.positionY,
+                  widthMm: f.widthMm,
+                  depthMm: f.depthMm,
+                  rotationDegree: f.rotationDegree,
+                };
+
+          return (
+            <FixtureShape
+              key={f.fixtureId}
+              fixture={f}
+              geometry={geometry}
+              scale={scale}
+              panX={panX}
+              panY={panY}
+              selected={selectedFixtureId === f.fixtureId}
+              editing={isEditing}
+              onSelect={() => selectFixture(f.fixtureId)}
+            />
+          );
+        })}
+      </>
+    );
+    if ((fixtures?.length ?? 0) === 0) {
+      emptyMessage = "Chưa có Fixture. Bấm “+ Add Fixture” ở Explorer để tạo.";
+    }
+  }
+
   return (
     <div className="flex h-full flex-1 flex-col bg-background">
       <WorkspaceHeader
-        title={store.storeName}
+        title={title}
         scale={scale}
         onZoomIn={() => zoomBy(1.25)}
         onZoomOut={() => zoomBy(0.8)}
@@ -97,47 +223,12 @@ export function Workspace() {
           }}
         >
           <GridBackground scale={scale} panX={panX} panY={panY} />
-
-          {fixtures?.map((f) => {
-            const isEditing = editingFixtureId === f.fixtureId;
-            const geometry: FixtureGeometry =
-              isEditing && draft
-                ? {
-                    positionX: draft.positionX,
-                    positionY: draft.positionY,
-                    widthMm: draft.widthMm,
-                    depthMm: draft.depthMm,
-                    rotationDegree: draft.rotationDegree,
-                  }
-                : {
-                    positionX: f.positionX,
-                    positionY: f.positionY,
-                    widthMm: f.widthMm,
-                    depthMm: f.depthMm,
-                    rotationDegree: f.rotationDegree,
-                  };
-
-            return (
-              <FixtureShape
-                key={f.fixtureId}
-                fixture={f}
-                geometry={geometry}
-                scale={scale}
-                panX={panX}
-                panY={panY}
-                selected={selectedFixtureId === f.fixtureId}
-                editing={isEditing}
-                onSelect={() => selectFixture(f.fixtureId)}
-              />
-            );
-          })}
+          {content}
         </svg>
 
-        {(fixtures?.length ?? 0) === 0 && (
+        {emptyMessage && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <p className="text-sm text-muted">
-              Chưa có Fixture. Bấm “+ Add Fixture” ở Explorer để tạo.
-            </p>
+            <p className="max-w-xs text-center text-sm text-muted">{emptyMessage}</p>
           </div>
         )}
       </div>
@@ -317,4 +408,144 @@ function FixtureShape({
       )}
     </g>
   );
+}
+
+/** Viền mặt Surface (0,0 → widthMm,heightMm) — bối cảnh cho các Display Position bên trong. */
+function SurfaceBoundsShape({
+  surface,
+  scale,
+  panX,
+  panY,
+}: {
+  surface: Surface;
+  scale: number;
+  panX: number;
+  panY: number;
+}) {
+  const rect = positionScreenRect(
+    { x: 0, y: 0, widthMm: surface.widthMm, heightMm: surface.heightMm },
+    scale,
+    panX,
+    panY
+  );
+  return (
+    <rect
+      x={rect.x}
+      y={rect.y}
+      width={rect.width}
+      height={rect.height}
+      fill="#ffffff"
+      stroke="#1a365d"
+      strokeWidth={2}
+    />
+  );
+}
+
+function DisplayPositionShape({
+  position,
+  geometry,
+  scale,
+  panX,
+  panY,
+  selected,
+  editing,
+  onSelect,
+}: {
+  position: DisplayPosition;
+  geometry: PositionGeometry;
+  scale: number;
+  panX: number;
+  panY: number;
+  selected: boolean;
+  editing: boolean;
+  onSelect: () => void;
+}) {
+  const rect = positionScreenRect(geometry, scale, panX, panY);
+
+  return (
+    <g
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className="cursor-pointer"
+    >
+      <rect
+        x={rect.x}
+        y={rect.y}
+        width={rect.width}
+        height={rect.height}
+        fill="#eef2ff"
+        stroke="#6366f1"
+        strokeWidth={selected ? 2.5 : 1.25}
+        strokeDasharray={editing ? "6 3" : undefined}
+        rx={2}
+      />
+      {selected && (
+        <rect
+          x={rect.x - 3}
+          y={rect.y - 3}
+          width={rect.width + 6}
+          height={rect.height + 6}
+          fill="none"
+          stroke="#e85d04"
+          strokeWidth={1.5}
+          strokeDasharray="4 2"
+          rx={4}
+        />
+      )}
+      {rect.width > 30 && (
+        <text x={rect.x + 4} y={rect.y + 12} fontSize={9} fill="#312e81" className="select-none">
+          {position.displayType}
+        </text>
+      )}
+      {editing && (
+        <text x={rect.x} y={rect.y - 4} fontSize={9} fill="#e85d04" fontWeight={600}>
+          Draft
+        </text>
+      )}
+    </g>
+  );
+}
+
+/** Preview lưới Bulk Generate — Draft, chưa Save, chỉ vẽ viền chấm (Part 04 §7.2). */
+function BulkGeneratePreview({
+  draft,
+  scale,
+  panX,
+  panY,
+}: {
+  draft: BulkGenerateDraft;
+  scale: number;
+  panX: number;
+  panY: number;
+}) {
+  const cells: React.ReactNode[] = [];
+  for (let row = 0; row < draft.rows; row++) {
+    for (let col = 0; col < draft.columns; col++) {
+      const x = draft.startX + col * (draft.cellWidthMm + draft.gapXMm);
+      const y = draft.startY + row * (draft.cellHeightMm + draft.gapYMm);
+      const rect = positionScreenRect(
+        { x, y, widthMm: draft.cellWidthMm, heightMm: draft.cellHeightMm },
+        scale,
+        panX,
+        panY
+      );
+      cells.push(
+        <rect
+          key={`${row}-${col}`}
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
+          fill="rgba(232, 93, 4, 0.08)"
+          stroke="#e85d04"
+          strokeWidth={1}
+          strokeDasharray="3 2"
+          rx={2}
+        />
+      );
+    }
+  }
+  return <>{cells}</>;
 }

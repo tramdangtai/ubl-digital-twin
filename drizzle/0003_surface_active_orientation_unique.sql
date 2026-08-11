@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uq_surface_active_orientation" ON "surface" USING btree ("fixture_id","orientation") WHERE "surface"."status" = 'Active';

@@ -74,3 +74,30 @@ export function normalizeDegree(degree: number): number {
   const normalized = degree % 360;
   return normalized < 0 ? normalized + 360 : normalized;
 }
+
+export interface SurfaceLocalGeometry {
+  x: number;
+  y: number;
+  widthMm: number;
+  heightMm: number;
+}
+
+/**
+ * Chuyển geometry vật lý trong Surface space (mm, origin = góc trên-trái
+ * Surface, y hướng xuống — CLAUDE.md quyết định #3) sang hình chữ nhật trên
+ * màn hình. Display Position luôn axis-aligned trong Surface — không có
+ * rotation (Part 03 §8), khác Fixture trong Store space.
+ */
+export function positionScreenRect(
+  geometry: SurfaceLocalGeometry,
+  scale: number,
+  panX: number,
+  panY: number
+) {
+  return {
+    x: mmToPx(geometry.x, scale) + panX,
+    y: mmToPx(geometry.y, scale) + panY,
+    width: mmToPx(geometry.widthMm, scale),
+    height: mmToPx(geometry.heightMm, scale),
+  };
+}

@@ -22,6 +22,13 @@
       "when": 1786457812489,
       "tag": "0002_numeric_mode_check",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786461837779,
+      "tag": "0003_surface_active_orientation_unique",
+      "breakpoints": true
     }
   ]
 }

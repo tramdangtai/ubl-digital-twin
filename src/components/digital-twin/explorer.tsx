@@ -1,10 +1,17 @@
 "use client";
 
+import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
 import { useRetailers } from "@/lib/api/hooks/use-retailers";
 import { useStores } from "@/lib/api/hooks/use-stores";
+import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
 import { useSelectionStore } from "@/lib/state/selection";
 import type { Store } from "@/lib/types/entities";
+
+const rowClass = (active: boolean) =>
+  `flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted-bg ${
+    active ? "bg-ubl-primary/10 font-medium text-ubl-secondary" : ""
+  }`;
 
 export function Explorer({ onCollapse }: { onCollapse: () => void }) {
   const { data: retailers, isLoading, error } = useRetailers();
@@ -13,17 +20,27 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
     selectedRetailerId,
     selectedStoreId,
     selectedFixtureId,
+    selectedSurfaceId,
+    selectedDisplayPositionId,
     mode,
     selectRetailer,
     selectStore,
     selectFixture,
+    selectSurface,
+    selectDisplayPosition,
     startCreateRetailer,
     startCreateStore,
     startCreateFixture,
+    startCreateSurface,
+    startCreateDisplayPosition,
+    startBulkGenerate,
   } = useSelectionStore();
 
-  // Chỉ 1 Store được mở rộng tại 1 thời điểm nên gọi hook 1 lần ở top-level là đủ.
+  // Chỉ 1 Store/Fixture/Surface được mở rộng tại 1 thời điểm nên gọi hook 1
+  // lần ở top-level là đủ, không cần fetch theo từng node trong tree.
   const { data: fixtures } = useFixtures(selectedStoreId ?? undefined);
+  const { data: surfaces } = useSurfaces(selectedFixtureId ?? undefined);
+  const { data: positions } = useDisplayPositions(selectedSurfaceId ?? undefined);
 
   const storesByRetailer = new Map<string, Store[]>();
   for (const s of stores ?? []) {
@@ -62,8 +79,7 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
 
         {retailers?.map((r) => {
           const isRetailerFocused = selectedRetailerId === r.retailerId;
-          const isRetailerSelected =
-            isRetailerFocused && !selectedStoreId && mode === "view";
+          const isRetailerSelected = isRetailerFocused && !selectedStoreId && mode === "view";
           const childStores = storesByRetailer.get(r.retailerId) ?? [];
 
           return (
@@ -105,21 +121,96 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
                               <p className="px-2 py-1 text-xs text-muted">Chưa có Fixture.</p>
                             )}
                             {fixtures?.map((f) => {
+                              const isFixtureFocused = selectedFixtureId === f.fixtureId;
                               const fixtureSelected =
-                                selectedFixtureId === f.fixtureId && mode === "view";
+                                isFixtureFocused && !selectedSurfaceId && mode === "view";
+
                               return (
-                                <button
-                                  key={f.fixtureId}
-                                  onClick={() => selectFixture(f.fixtureId)}
-                                  className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted-bg ${
-                                    fixtureSelected
-                                      ? "bg-ubl-primary/10 font-medium text-ubl-secondary"
-                                      : ""
-                                  }`}
-                                >
-                                  <span>{f.fixtureName}</span>
-                                  <span className="text-muted">{f.fixtureCode}</span>
-                                </button>
+                                <div key={f.fixtureId}>
+                                  <button
+                                    onClick={() => selectFixture(f.fixtureId)}
+                                    className={rowClass(fixtureSelected)}
+                                  >
+                                    <span>{f.fixtureName}</span>
+                                    <span className="text-muted">{f.fixtureCode}</span>
+                                  </button>
+
+                                  {isFixtureFocused && (
+                                    <div className="ml-3 border-l border-border pl-2">
+                                      {(surfaces?.length ?? 0) === 0 && (
+                                        <p className="px-2 py-1 text-[11px] text-muted">
+                                          Chưa có Surface.
+                                        </p>
+                                      )}
+                                      {surfaces?.map((surf) => {
+                                        const isSurfaceFocused = selectedSurfaceId === surf.surfaceId;
+                                        const surfaceSelected =
+                                          isSurfaceFocused &&
+                                          !selectedDisplayPositionId &&
+                                          mode === "view";
+
+                                        return (
+                                          <div key={surf.surfaceId}>
+                                            <button
+                                              onClick={() => selectSurface(f.fixtureId, surf.surfaceId)}
+                                              className={rowClass(surfaceSelected)}
+                                            >
+                                              <span>{surf.surfaceName || surf.orientation}</span>
+                                              <span className="text-muted">{surf.orientation}</span>
+                                            </button>
+
+                                            {isSurfaceFocused && (
+                                              <div className="ml-3 border-l border-border pl-2">
+                                                {(positions?.length ?? 0) === 0 && (
+                                                  <p className="px-2 py-1 text-[11px] text-muted">
+                                                    Chưa có Display Position.
+                                                  </p>
+                                                )}
+                                                {positions?.map((p) => {
+                                                  const positionSelected =
+                                                    selectedDisplayPositionId === p.positionId &&
+                                                    mode === "view";
+                                                  return (
+                                                    <button
+                                                      key={p.positionId}
+                                                      onClick={() =>
+                                                        selectDisplayPosition(surf.surfaceId, p.positionId)
+                                                      }
+                                                      className={rowClass(positionSelected)}
+                                                    >
+                                                      <span>{p.displayType}</span>
+                                                      <span className="text-muted">
+                                                        ({p.x}, {p.y})
+                                                      </span>
+                                                    </button>
+                                                  );
+                                                })}
+                                                <button
+                                                  onClick={startCreateDisplayPosition}
+                                                  className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                                >
+                                                  + Add Display Position
+                                                </button>
+                                                <button
+                                                  onClick={startBulkGenerate}
+                                                  className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                                >
+                                                  + Bulk Generate...
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                      <button
+                                        onClick={() => startCreateSurface(f.fixtureId)}
+                                        className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                      >
+                                        + Add Surface
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               );
                             })}
                             <button

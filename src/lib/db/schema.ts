@@ -141,6 +141,12 @@ export const surface = pgTable(
       sql`${table.orientation} IN ('Front', 'Back', 'Left', 'Right', 'Top')`
     ),
     check("surface_status_check", sql`${table.status} IN ('Active', 'Archived')`),
+    // Giai đoạn 3: 1 Fixture không được có 2 Surface Active cùng orientation
+    // (vật lý không có 2 mặt "Front" cùng lúc) — quyết định implement, xem
+    // CLAUDE.md.
+    uniqueIndex("uq_surface_active_orientation")
+      .on(table.fixtureId, table.orientation)
+      .where(sql`${table.status} = 'Active'`),
   ]
 );
 
