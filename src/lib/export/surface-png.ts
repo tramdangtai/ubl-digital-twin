@@ -83,10 +83,12 @@ export function buildSurfaceSvgString(
     scale: number;
     padding: number;
     headerH: number;
+    /** < 1 khi Surface có ảnh nền — khớp với độ đậm khung đang hiện trên canvas. */
+    cellFillOpacity: number;
   }
 ): { svg: string; totalWidth: number; totalHeight: number } {
   const { retailer, store, fixture, surface, positions, assignmentByPositionId } = ctx;
-  const { dataUris, bgDataUri, cellMode, scale, padding, headerH } = opts;
+  const { dataUris, bgDataUri, cellMode, scale, padding, headerH, cellFillOpacity } = opts;
 
   const surfaceW = Math.round(surface.widthMm * scale);
   const surfaceH = Math.round(surface.heightMm * scale);
@@ -95,7 +97,8 @@ export function buildSurfaceSvgString(
   // canvas vài nghìn px — cùng lý do với FONT_MM ở buildTextContent.
   const titleFont = FONT_MM * 0.85 * scale;
   const subFont = FONT_MM * 0.6 * scale;
-  const actualHeaderH = Math.max(headerH, titleFont + subFont + titleFont * 0.9);
+  // 3 dòng: tiêu đề, kích thước+ngày, thống kê.
+  const actualHeaderH = Math.max(headerH, titleFont + subFont * 2 + titleFont * 1.1);
 
   const totalWidth = surfaceW + padding * 2;
   const totalHeight = surfaceH + actualHeaderH + padding * 2;
@@ -112,8 +115,20 @@ export function buildSurfaceSvgString(
   const titleText = `${escXml(retailer.retailerName)} — ${escXml(store.storeName)} — ${escXml(fixture.fixtureName)} — ${escXml(surface.surfaceName || surface.orientation)}`;
   const subtitleText = `${surface.widthMm} × ${surface.heightMm} mm | Xuất: ${exportedAt}`;
 
-  // Sắp xếp theo y rồi x để render theo thứ tự tự nhiên.
+  // Sắp xếp theo y rồi x — trên→dưới, trái→phải. CÙNG thứ tự với surface-csv.ts
+  // nên số thứ tự vẽ lên ảnh khớp đúng cột `stt` trong file CSV.
   const sorted = [...positions].sort((a, b) => a.y - b.y || a.x - b.x);
+
+  // Dòng thống kê để người nhận đối chiếu nhanh mà không cần mở CSV.
+  const filledCount = sorted.filter((p) => assignmentByPositionId.has(p.positionId)).length;
+  const skuCount = new Set(
+    sorted
+      .map((p) => assignmentByPositionId.get(p.positionId)?.product.itemCode)
+      .filter((code): code is string => Boolean(code))
+  ).size;
+  const statsText = `Tổng ${sorted.length} vị trí | Đã gán ${filledCount} | Còn trống ${
+    sorted.length - filledCount
+  } | ${skuCount} SKU`;
 
   // Mỗi position cần clipPath riêng để chữ không tràn ra phải.
   const clipDefs: string[] = [];
@@ -131,13 +146,29 @@ export function buildSurfaceSvgString(
     const stroke = asgn ? OCCUPIED_STROKE : EMPTY_STROKE;
     const textFill = asgn ? OCCUPIED_TEXT : EMPTY_TEXT;
 
-    // clipPath giới hạn text trong khung position (padding 3px mỗi bên).
-    const clipId = `cp-${idx}`;
-    clipDefs.push(
-      `<clipPath id="${clipId}"><rect x="${rect.x + 3}" y="${rect.y}" width="${rect.width - 6}" height="${rect.height}"/></clipPath>`
-    );
+    // Khung mờ đi (có ảnh nền) thì viền phải đậm lên mới thấy lưới ô.
+    const strokeWidth = cellFillOpacity < 1 ? 2 : 1.25;
+    const baseShape = `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="${fill}" fill-opacity="${cellFillOpacity}" stroke="${stroke}" stroke-width="${strokeWidth}" rx="2"/>`;
 
-    const baseShape = `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="${fill}" stroke="${stroke}" stroke-width="1.25" rx="2"/>`;
+    // Số thứ tự ô ở góc trên-PHẢI (góc trên-trái đã là item_code), có nền tròn
+    // mờ để đọc được cả khi đè lên ảnh nền hoặc ảnh sản phẩm.
+    const ordFont = FONT_MM * 0.55 * scale;
+    const ordR = ordFont * 0.78;
+    const showOrdinal = rect.width > ordR * 2.5 && rect.height > ordR * 2.5;
+    const ordCx = rect.x + rect.width - ordR - 2;
+    const ordCy = rect.y + ordR + 2;
+    const ordinal = showOrdinal
+      ? `<circle cx="${ordCx}" cy="${ordCy}" r="${ordR}" fill="rgba(255,255,255,0.9)" stroke="${stroke}" stroke-width="${Math.max(0.5, scale * 0.5)}"/>` +
+        `<text x="${ordCx}" y="${ordCy + ordFont * 0.35}" font-size="${ordFont}" font-weight="700" fill="${textFill}" text-anchor="middle">${idx + 1}</text>`
+      : "";
+
+    // clipPath giới hạn text trong khung position. Chừa chỗ cho vòng tròn số
+    // thứ tự bên phải để item_code không chạy xuống dưới nó.
+    const clipId = `cp-${idx}`;
+    const clipW = rect.width - 6 - (showOrdinal ? ordR * 2 + 4 : 0);
+    clipDefs.push(
+      `<clipPath id="${clipId}"><rect x="${rect.x + 3}" y="${rect.y}" width="${Math.max(0, clipW)}" height="${rect.height}"/></clipPath>`
+    );
 
     let content = "";
 
@@ -164,7 +195,8 @@ export function buildSurfaceSvgString(
       content = buildTextContent(rect, pos, asgn, textFill, clipId, scale);
     }
 
-    return baseShape + content;
+    // ordinal vẽ SAU cùng để luôn nằm trên ảnh sản phẩm và chữ.
+    return baseShape + content + ordinal;
   });
 
   // clipDefs được thu thập ở vòng lặp trên, đặt vào <defs> ở đây.
@@ -202,6 +234,7 @@ export function buildSurfaceSvgString(
   <rect width="${totalWidth}" height="${Math.max(1, scale)}" y="${actualHeaderH}" fill="#e2e8f0"/>
   <text x="${padding}" y="${titleFont * 1.15}" font-size="${titleFont}" font-weight="700" fill="#1e3a5f">${titleText}</text>
   <text x="${padding}" y="${titleFont * 1.15 + subFont * 1.4}" font-size="${subFont}" fill="#64748b">${subtitleText}</text>
+  <text x="${padding}" y="${titleFont * 1.15 + subFont * 2.8}" font-size="${subFont}" fill="#64748b">${escXml(statsText)}</text>
 
   <!-- Viền Surface -->
   <rect x="${panX}" y="${panY}" width="${surfaceW}" height="${surfaceH}" fill="#ffffff" stroke="#1a365d" stroke-width="2"/>
@@ -312,9 +345,9 @@ async function svgToCanvas(svgString: string, width: number, height: number): Pr
 
 export async function exportSurfacePng(
   ctx: SurfaceExportContext,
-  opts: { cellMode: SurfaceCellMode }
+  opts: { cellMode: SurfaceCellMode; cellFillOpacity?: number }
 ): Promise<Blob> {
-  const { cellMode } = opts;
+  const { cellMode, cellFillOpacity = 1 } = opts;
 
   // Tính scale: MAX_PX / cạnh dài, nhân 2 cho nét.
   const longestSide = Math.max(ctx.surface.widthMm, ctx.surface.heightMm);
@@ -347,6 +380,7 @@ export async function exportSurfacePng(
     scale,
     padding: PADDING,
     headerH: HEADER_H,
+    cellFillOpacity,
   });
 
   // B3: SVG → canvas.

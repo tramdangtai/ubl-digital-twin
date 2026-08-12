@@ -30,7 +30,13 @@ import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
 import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
 import { useFixtureDraftStore } from "@/lib/state/fixture-draft";
 import { useSelectionStore } from "@/lib/state/selection";
-import { useSurfaceViewModeStore, type SurfaceCellMode } from "@/lib/state/surface-view-mode";
+import {
+  CELL_FILL_OPACITY,
+  CELL_OPACITY_LABELS,
+  useSurfaceViewModeStore,
+  type CellOpacityLevel,
+  type SurfaceCellMode,
+} from "@/lib/state/surface-view-mode";
 import { useWorkspaceViewStore } from "@/lib/state/workspace-view";
 import type { AssignmentWithProduct, DisplayPosition, Fixture, Surface } from "@/lib/types/entities";
 
@@ -85,10 +91,13 @@ export function Workspace() {
   const { editingFixtureId, draft: fixtureDraft } = useFixtureDraftStore();
   const { editingPositionId, draft: positionDraft } = useDisplayPositionDraftStore();
   const { draft: bulkDraft } = useBulkGenerateDraftStore();
-  const { cellMode, setCellMode } = useSurfaceViewModeStore();
+  const { cellMode, setCellMode, cellOpacity, setCellOpacity } = useSurfaceViewModeStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isSurfaceView = Boolean(selectedSurfaceId && surface);
+  // Chỉ giảm độ đậm khung khi thật sự có ảnh nền phía sau — Surface không có
+  // ảnh nền phải giữ nguyên 100% hành vi cũ.
+  const hasBackground = Boolean(surface?.backgroundImageId);
 
   // Export state
   const [isExportingPng, setIsExportingPng] = useState(false);
@@ -175,7 +184,11 @@ export function Workspace() {
         positions,
         assignmentByPositionId: assignmentMap,
       };
-      const blob = await exportSurfacePng(ctx, { cellMode });
+      const blob = await exportSurfacePng(ctx, {
+        cellMode,
+        // Ảnh xuất ra phải giống hệt thứ user đang nhìn trên canvas.
+        cellFillOpacity: hasBackground ? CELL_FILL_OPACITY[cellOpacity] : 1,
+      });
       const baseName = buildSurfaceExportBaseName(ctx);
       downloadBlob(blob, `${baseName}.png`);
     } catch (e) {
@@ -241,6 +254,7 @@ export function Workspace() {
               editing={editing}
               assignment={assignmentMap.get(p.positionId)}
               cellMode={cellMode}
+              fillOpacity={hasBackground ? CELL_FILL_OPACITY[cellOpacity] : 1}
               onSelect={() => selectDisplayPosition(surface.surfaceId, p.positionId)}
             />
           );
@@ -318,6 +332,9 @@ export function Workspace() {
         isSurfaceView={isSurfaceView}
         cellMode={cellMode}
         onCellModeChange={setCellMode}
+        hasBackground={hasBackground}
+        cellOpacity={cellOpacity}
+        onCellOpacityChange={setCellOpacity}
         isExportingPng={isExportingPng}
         isExportingCsv={isExportingCsv}
         exportReady={!!exportReady}
@@ -354,6 +371,9 @@ function WorkspaceHeader({
   isSurfaceView = false,
   cellMode,
   onCellModeChange,
+  hasBackground = false,
+  cellOpacity,
+  onCellOpacityChange,
   isExportingPng = false,
   isExportingCsv = false,
   exportReady = false,
@@ -368,6 +388,9 @@ function WorkspaceHeader({
   isSurfaceView?: boolean;
   cellMode?: SurfaceCellMode;
   onCellModeChange?: (m: SurfaceCellMode) => void;
+  hasBackground?: boolean;
+  cellOpacity?: CellOpacityLevel;
+  onCellOpacityChange?: (o: CellOpacityLevel) => void;
   isExportingPng?: boolean;
   isExportingCsv?: boolean;
   exportReady?: boolean;
@@ -404,6 +427,29 @@ function WorkspaceHeader({
             >
               Ảnh
             </button>
+          </div>
+        )}
+
+        {/* Độ đậm khung — chỉ có nghĩa khi Surface có ảnh nền phía sau */}
+        {isSurfaceView && hasBackground && cellOpacity && onCellOpacityChange && (
+          <div
+            className="flex items-center rounded border border-border text-xs"
+            title="Độ đậm nền khung Display Position — giảm để nhìn rõ ảnh nền phía sau"
+          >
+            <span className="px-2 py-0.5 text-muted">Khung</span>
+            {(["solid", "medium", "light"] as const).map((level) => (
+              <button
+                key={level}
+                onClick={() => onCellOpacityChange(level)}
+                className={`border-l border-border px-2 py-0.5 last:rounded-r ${
+                  cellOpacity === level
+                    ? "bg-ubl-primary/10 font-medium text-ubl-secondary"
+                    : "hover:bg-muted-bg"
+                }`}
+              >
+                {CELL_OPACITY_LABELS[level]}
+              </button>
+            ))}
           </div>
         )}
 
@@ -687,6 +733,7 @@ function DisplayPositionShape({
   editing,
   assignment,
   cellMode,
+  fillOpacity = 1,
   onSelect,
 }: {
   position: DisplayPosition;
@@ -698,10 +745,16 @@ function DisplayPositionShape({
   editing: boolean;
   assignment?: AssignmentWithProduct;
   cellMode: SurfaceCellMode;
+  /** < 1 khi Surface có ảnh nền — để nhìn xuyên khung xuống ảnh kệ thật. */
+  fillOpacity?: number;
   onSelect: () => void;
 }) {
   const rect = positionScreenRect(geometry, scale, panX, panY);
   const active = assignment ?? null;
+
+  // Khung mờ đi thì viền phải đậm lên, nếu không lưới ô sẽ tan vào ảnh nền.
+  const translucent = fillOpacity < 1;
+  const baseStrokeWidth = translucent ? 2 : 1.25;
 
   // Trạng thái ảnh cho chế độ "Ảnh" — useImageStatus trả "none" khi không có URL.
   const imageStatus = useImageStatus(
@@ -724,8 +777,9 @@ function DisplayPositionShape({
         width={rect.width}
         height={rect.height}
         fill={active ? OCCUPIED_FILL : EMPTY_FILL}
+        fillOpacity={fillOpacity}
         stroke={active ? OCCUPIED_STROKE : EMPTY_STROKE}
-        strokeWidth={selected ? 2.5 : 1.25}
+        strokeWidth={selected ? baseStrokeWidth + 1.25 : baseStrokeWidth}
         strokeDasharray={editing ? "6 3" : undefined}
         rx={2}
       />
@@ -779,20 +833,39 @@ function DisplayPositionShape({
       ) : (
         /* Chế độ chữ (hoặc fallback khi ảnh hỏng/chưa có) */
         <>
+          {/* Có ảnh nền → khung mờ, chữ cần dải nền riêng mới đọc được trên ảnh
+              kệ thật (cùng cách chế độ "Ảnh" đang làm ở dải item_code phía dưới). */}
+          {translucent && rect.width > 30 && (
+            <rect
+              x={rect.x + 1}
+              y={rect.y + 1}
+              width={rect.width - 2}
+              height={Math.min(rect.height - 2, active && rect.height > 26 ? 26 : 15)}
+              fill="rgba(255,255,255,0.82)"
+              rx={2}
+            />
+          )}
           {rect.width > 30 && (
             <text
               x={rect.x + 4}
               y={rect.y + 12}
               fontSize={9}
+              fontWeight={active ? 600 : 400}
               fill={active ? OCCUPIED_TEXT : EMPTY_TEXT}
               className="select-none"
             >
-              {active ? active.product.description : position.displayType}
+              {active ? active.product.itemCode : position.displayType}
             </text>
           )}
           {active && rect.width > 30 && rect.height > 26 && (
-            <text x={rect.x + 4} y={rect.y + 23} fontSize={8} fill="#166534" className="select-none">
-              {active.product.itemCode}
+            <text
+              x={rect.x + 4}
+              y={rect.y + 23}
+              fontSize={8}
+              fill={OCCUPIED_TEXT}
+              className="select-none"
+            >
+              {active.product.description}
             </text>
           )}
         </>

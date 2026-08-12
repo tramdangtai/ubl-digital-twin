@@ -6,7 +6,7 @@ import type { SurfaceExportContext } from "./types";
  * BOM + \r\n: Excel Windows hiển thị tiếng Việt đúng dấu.
  *
  * Cột (theo thứ tự spec):
- * retailer_code, retailer_name, store_code, store_name, fixture_code, fixture_name,
+ * stt, retailer_code, retailer_name, store_code, store_name, fixture_code, fixture_name,
  * surface_name, surface_orientation, surface_width_mm, surface_height_mm,
  * display_type, x_mm, y_mm, width_mm, height_mm, capacity, facing_limit,
  * item_code, product_description, brand, category, product_group,
@@ -24,6 +24,9 @@ function escapeCell(value: string | number | null | undefined): string {
 }
 
 const HEADERS = [
+  // stt khớp đúng số thứ tự vẽ trên file PNG (cùng thứ tự sort y→x) để chỉ
+  // đích danh một ô khi trao đổi với retailer.
+  "stt",
   "retailer_code",
   "retailer_name",
   "store_code",
@@ -60,14 +63,16 @@ export function buildSurfaceCsv(ctx: SurfaceExportContext): string {
   const { retailer, store, fixture, surface, positions, assignmentByPositionId } = ctx;
   const exportedAt = new Date().toISOString();
 
-  // Sắp xếp theo y rồi x.
+  // Sắp xếp theo y rồi x — PHẢI trùng thứ tự với surface-png.ts để cột stt
+  // khớp với số vẽ trên ảnh.
   const sorted = [...positions].sort((a, b) => a.y - b.y || a.x - b.x);
 
-  const rows: string[][] = sorted.map((pos) => {
+  const rows: string[][] = sorted.map((pos, idx) => {
     const asgn = assignmentByPositionId.get(pos.positionId);
     const prod = asgn?.product;
 
     return [
+      String(idx + 1),
       retailer.retailerCode,
       retailer.retailerName,
       store.storeCode,
