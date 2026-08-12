@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
+import { canWrite, useCurrentUser } from "@/lib/api/hooks/use-current-user";
 import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
 import { useSurfaceAssignments } from "@/lib/api/hooks/use-product-assignments";
@@ -23,8 +24,21 @@ import {
   OCCUPIED_FILL,
   OCCUPIED_STROKE,
   OCCUPIED_TEXT,
+  PENDING_FILL,
+  PENDING_STROKE,
+  PENDING_TEXT,
+  REJECTED_FILL,
+  REJECTED_STROKE,
+  REJECTED_TEXT,
 } from "@/lib/rendering/colors";
 import { useImageStatus } from "@/lib/rendering/use-image-status";
+import {
+  MAX_PENDING_ASSIGNMENTS,
+  useBulkAssignDraftStore,
+  type PendingAssignment,
+  type StampRejectReason,
+} from "@/lib/state/bulk-assign-draft";
+import { BulkAssignBar } from "./bulk-assign-bar";
 import type { BulkGenerateDraft } from "@/lib/state/bulk-generate-draft";
 import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
 import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
@@ -64,7 +78,10 @@ export function Workspace() {
     mode,
     selectFixture,
     selectDisplayPosition,
+    startBulkAssignProduct,
   } = useSelectionStore();
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const { data: retailers } = useRetailers();
   const { data: stores } = useStores();
   const { data: fixtures } = useFixtures(selectedStoreId ?? undefined);
@@ -98,6 +115,25 @@ export function Workspace() {
   // Chỉ giảm độ đậm khung khi thật sự có ảnh nền phía sau — Surface không có
   // ảnh nền phải giữ nguyên 100% hành vi cũ.
   const hasBackground = Boolean(surface?.backgroundImageId);
+
+  // Gán hàng loạt. Nguồn sự thật là surfaceId của draft store (không phải
+  // selection.mode) — xem ghi chú ở startBulkAssignProduct trong selection.ts.
+  const bulkAssign = useBulkAssignDraftStore();
+  const stampMode = bulkAssign.surfaceId !== null && bulkAssign.surfaceId === selectedSurfaceId;
+  const pendingCount = Object.keys(bulkAssign.pending).length;
+
+  // Flash đỏ khi bấm bị từ chối rồi tự tắt. Gom 1 timer ở đây thay vì mỗi ô một
+  // timer riêng — tránh rò timer khi hàng trăm ô unmount lúc đổi Surface.
+  const rejectedKeys = Object.keys(bulkAssign.rejected).join(",");
+  useEffect(() => {
+    if (!rejectedKeys) return;
+    const ids = rejectedKeys.split(",");
+    const timer = setTimeout(() => {
+      const store = useBulkAssignDraftStore.getState();
+      for (const id of ids) store.clearRejected(id);
+    }, 1600);
+    return () => clearTimeout(timer);
+  }, [rejectedKeys]);
 
   // Export state
   const [isExportingPng, setIsExportingPng] = useState(false);
@@ -198,6 +234,35 @@ export function Workspace() {
     }
   }
 
+  /**
+   * Một cú bấm trong chế độ dán. Mọi kiểm tra nghiệp vụ nằm ở đây (không phải
+   * trong store — store chỉ giữ UI state, nguyên tắc #6). Backend vẫn validate
+   * lại toàn bộ khi Lưu (nguyên tắc #5).
+   */
+  function handleStamp(p: DisplayPosition) {
+    const draft = useBulkAssignDraftStore.getState();
+    const alreadyPending = Boolean(draft.pending[p.positionId]);
+
+    if (!draft.currentProduct) {
+      draft.markRejected(p.positionId, "NO_PRODUCT");
+      return;
+    }
+    if (p.status !== "Active") {
+      draft.markRejected(p.positionId, "POSITION_NOT_ACTIVE");
+      return;
+    }
+    // Ô đã có Active assignment → không dán chồng (DB chỉ cho 1 assignment/ô).
+    if (assignmentMap.has(p.positionId) && !alreadyPending) {
+      draft.markRejected(p.positionId, "ACTIVE_ASSIGNMENT_EXISTS");
+      return;
+    }
+    if (!alreadyPending && Object.keys(draft.pending).length >= MAX_PENDING_ASSIGNMENTS) {
+      draft.markRejected(p.positionId, "LIMIT_REACHED");
+      return;
+    }
+    draft.stampPosition(p.positionId);
+  }
+
   if (!store) {
     return (
       <div className="flex h-full flex-1 flex-col bg-background">
@@ -255,7 +320,12 @@ export function Workspace() {
               assignment={assignmentMap.get(p.positionId)}
               cellMode={cellMode}
               fillOpacity={hasBackground ? CELL_FILL_OPACITY[cellOpacity] : 1}
+              stampMode={stampMode}
+              pending={bulkAssign.pending[p.positionId]}
+              rejectReason={bulkAssign.rejected[p.positionId]}
+              itemError={bulkAssign.itemErrors[p.positionId]}
               onSelect={() => selectDisplayPosition(surface.surfaceId, p.positionId)}
+              onStamp={() => handleStamp(p)}
             />
           );
         })}
@@ -340,7 +410,13 @@ export function Workspace() {
         exportReady={!!exportReady}
         onExportPng={handleExportPng}
         onExportCsv={handleExportCsv}
+        canBulkAssign={isSurfaceView && !stampMode && writable}
+        onStartBulkAssign={() =>
+          selectedSurfaceId && startBulkAssignProduct(selectedSurfaceId, null)
+        }
+        pendingCount={pendingCount}
       />
+      {stampMode && selectedSurfaceId && <BulkAssignBar surfaceId={selectedSurfaceId} />}
       <div ref={containerRef} className="relative flex-1 overflow-hidden">
         <svg
           className="h-full w-full cursor-grab active:cursor-grabbing touch-none"
@@ -379,6 +455,9 @@ function WorkspaceHeader({
   exportReady = false,
   onExportPng,
   onExportCsv,
+  canBulkAssign = false,
+  onStartBulkAssign,
+  pendingCount = 0,
 }: {
   title?: string;
   scale?: number;
@@ -396,6 +475,9 @@ function WorkspaceHeader({
   exportReady?: boolean;
   onExportPng?: () => void;
   onExportCsv?: () => void;
+  canBulkAssign?: boolean;
+  onStartBulkAssign?: () => void;
+  pendingCount?: number;
 }) {
   return (
     <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
@@ -430,6 +512,17 @@ function WorkspaceHeader({
           </div>
         )}
 
+        {/* Vào chế độ gán hàng loạt — 1 click/ô thay vì 5 click + 2 lần đổi tab */}
+        {canBulkAssign && onStartBulkAssign && (
+          <button
+            onClick={onStartBulkAssign}
+            title="Chọn 1 sản phẩm rồi bấm lần lượt các ô cần gán"
+            className="rounded border border-ubl-primary/40 bg-ubl-primary/10 px-2 py-0.5 text-xs font-medium text-ubl-secondary hover:bg-ubl-primary/20"
+          >
+            ⌖ Gán hàng loạt
+          </button>
+        )}
+
         {/* Độ đậm khung — chỉ có nghĩa khi Surface có ảnh nền phía sau */}
         {isSurfaceView && hasBackground && cellOpacity && onCellOpacityChange && (
           <div
@@ -453,19 +546,31 @@ function WorkspaceHeader({
           </div>
         )}
 
-        {/* Nút Export — chỉ hiện ở Surface View */}
+        {/* Nút Export — chỉ hiện ở Surface View.
+            Chặn khi còn ô chưa lưu: file xuất ra không được ngụ ý dữ liệu chưa
+            persist là thật (nguyên tắc #8). */}
         {isSurfaceView && (
           <>
             <button
-              disabled={!exportReady || isExportingCsv}
+              disabled={!exportReady || isExportingCsv || pendingCount > 0}
               onClick={onExportCsv}
+              title={
+                pendingCount > 0
+                  ? "Lưu hoặc huỷ các thay đổi đang chờ trước khi xuất file"
+                  : undefined
+              }
               className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg disabled:opacity-50"
             >
               {isExportingCsv ? "Đang xuất..." : "⬇ CSV"}
             </button>
             <button
-              disabled={!exportReady || isExportingPng}
+              disabled={!exportReady || isExportingPng || pendingCount > 0}
               onClick={onExportPng}
+              title={
+                pendingCount > 0
+                  ? "Lưu hoặc huỷ các thay đổi đang chờ trước khi xuất file"
+                  : undefined
+              }
               className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg disabled:opacity-50"
             >
               {isExportingPng ? "Đang xuất..." : "⬇ PNG"}
@@ -734,7 +839,12 @@ function DisplayPositionShape({
   assignment,
   cellMode,
   fillOpacity = 1,
+  stampMode = false,
+  pending,
+  rejectReason,
+  itemError,
   onSelect,
+  onStamp,
 }: {
   position: DisplayPosition;
   geometry: PositionGeometry;
@@ -747,42 +857,124 @@ function DisplayPositionShape({
   cellMode: SurfaceCellMode;
   /** < 1 khi Surface có ảnh nền — để nhìn xuyên khung xuống ảnh kệ thật. */
   fillOpacity?: number;
+  stampMode?: boolean;
+  pending?: PendingAssignment;
+  rejectReason?: StampRejectReason;
+  itemError?: string;
   onSelect: () => void;
+  onStamp?: () => void;
 }) {
   const rect = positionScreenRect(geometry, scale, panX, panY);
   const active = assignment ?? null;
+  const [hovered, setHovered] = useState(false);
+
+  // Phân biệt click thật với thao tác pan bắt đầu trên ô. Không có ngưỡng này
+  // thì mỗi lần kéo canvas từ trên một ô sẽ vô tình dán sản phẩm vào đó.
+  const downRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Ưu tiên: lỗi > pending > đã gán > trống.
+  const errored = Boolean(rejectReason || itemError);
+  const cellFill = errored
+    ? REJECTED_FILL
+    : pending
+    ? PENDING_FILL
+    : active
+    ? OCCUPIED_FILL
+    : EMPTY_FILL;
+  const cellStroke = errored
+    ? REJECTED_STROKE
+    : pending
+    ? PENDING_STROKE
+    : active
+    ? OCCUPIED_STROKE
+    : EMPTY_STROKE;
+  const cellText = errored
+    ? REJECTED_TEXT
+    : pending
+    ? PENDING_TEXT
+    : active
+    ? OCCUPIED_TEXT
+    : EMPTY_TEXT;
 
   // Khung mờ đi thì viền phải đậm lên, nếu không lưới ô sẽ tan vào ảnh nền.
-  const translucent = fillOpacity < 1;
+  // Ô pending/lỗi luôn tô đặc để nổi bật, kể cả khi có ảnh nền.
+  const translucent = fillOpacity < 1 && !pending && !errored;
   const baseStrokeWidth = translucent ? 2 : 1.25;
+  const effectiveFillOpacity = pending || errored ? 1 : fillOpacity;
+
+  // Ô đã có hàng thì không dán chồng được (DB chỉ cho 1 Active assignment/ô).
+  const stampBlocked = stampMode && Boolean(active) && !pending;
 
   // Trạng thái ảnh cho chế độ "Ảnh" — useImageStatus trả "none" khi không có URL.
   const imageStatus = useImageStatus(
     cellMode === "image" ? active?.product.imageUrl : null
   );
 
-  const showImage = cellMode === "image" && imageStatus === "ok" && active?.product.imageUrl;
+  // Ô pending hiện nhãn sản phẩm sắp gán, không phải sản phẩm cũ.
+  const showImage =
+    cellMode === "image" && imageStatus === "ok" && active?.product.imageUrl && !pending;
 
   return (
     <g
       onPointerDown={(e) => {
         e.stopPropagation();
+        downRef.current = { x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={(e) => {
+        const down = downRef.current;
+        downRef.current = null;
+        // Di chuyển quá 4px = user đang pan, không phải bấm chọn ô.
+        if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+        if (stampMode) {
+          // Trong chế độ dán, click KHÔNG đổi selection — Inspector giữ nguyên
+          // panel review thay vì nhảy lung tung.
+          onStamp?.();
+          return;
+        }
         onSelect();
       }}
-      className="cursor-pointer"
+      onPointerEnter={() => stampMode && setHovered(true)}
+      onPointerLeave={() => stampMode && setHovered(false)}
+      className={
+        stampMode ? (stampBlocked ? "cursor-not-allowed" : "cursor-copy") : "cursor-pointer"
+      }
     >
+      {stampMode && (
+        <title>
+          {stampBlocked
+            ? "Ô này đã có sản phẩm"
+            : pending
+            ? `${pending.itemCode} — bấm lại để bỏ`
+            : "Bấm để gán sản phẩm đang chọn"}
+        </title>
+      )}
       <rect
         x={rect.x}
         y={rect.y}
         width={rect.width}
         height={rect.height}
-        fill={active ? OCCUPIED_FILL : EMPTY_FILL}
-        fillOpacity={fillOpacity}
-        stroke={active ? OCCUPIED_STROKE : EMPTY_STROKE}
-        strokeWidth={selected ? baseStrokeWidth + 1.25 : baseStrokeWidth}
-        strokeDasharray={editing ? "6 3" : undefined}
+        fill={cellFill}
+        fillOpacity={effectiveFillOpacity}
+        stroke={cellStroke}
+        strokeWidth={selected || pending || errored ? baseStrokeWidth + 1.25 : baseStrokeWidth}
+        strokeDasharray={editing || pending ? "6 3" : undefined}
         rx={2}
       />
+
+      {/* Viền ma khi rê chuột lên ô trống trong chế độ dán */}
+      {stampMode && hovered && !stampBlocked && (
+        <rect
+          x={rect.x + 1.5}
+          y={rect.y + 1.5}
+          width={Math.max(0, rect.width - 3)}
+          height={Math.max(0, rect.height - 3)}
+          fill="none"
+          stroke={PENDING_STROKE}
+          strokeWidth={2}
+          strokeOpacity={0.6}
+          rx={2}
+        />
+      )}
       {selected && (
         <rect
           x={rect.x - 3}
@@ -850,30 +1042,45 @@ function DisplayPositionShape({
               x={rect.x + 4}
               y={rect.y + 12}
               fontSize={9}
-              fontWeight={active ? 600 : 400}
-              fill={active ? OCCUPIED_TEXT : EMPTY_TEXT}
+              fontWeight={active || pending ? 600 : 400}
+              fill={cellText}
               className="select-none"
             >
-              {active ? active.product.itemCode : position.displayType}
+              {pending
+                ? `${pending.itemCode} ×${pending.facingQty}`
+                : active
+                ? active.product.itemCode
+                : position.displayType}
             </text>
           )}
-          {active && rect.width > 30 && rect.height > 26 && (
+          {(pending || active) && rect.width > 30 && rect.height > 26 && (
             <text
               x={rect.x + 4}
               y={rect.y + 23}
               fontSize={8}
-              fill={OCCUPIED_TEXT}
+              fill={cellText}
               className="select-none"
             >
-              {active.product.description}
+              {pending ? pending.description : active!.product.description}
             </text>
           )}
         </>
       )}
 
+      {/* Nhãn trạng thái phía trên ô — Draft (đang sửa hình học) vs Chờ lưu (gán hàng loạt) */}
       {editing && (
         <text x={rect.x} y={rect.y - 4} fontSize={9} fill="#e85d04" fontWeight={600}>
           Draft
+        </text>
+      )}
+      {!editing && pending && !errored && (
+        <text x={rect.x} y={rect.y - 4} fontSize={9} fill={PENDING_STROKE} fontWeight={600}>
+          Chờ lưu
+        </text>
+      )}
+      {errored && (
+        <text x={rect.x} y={rect.y - 4} fontSize={9} fill={REJECTED_STROKE} fontWeight={700}>
+          ✕ {itemError ? "Lỗi" : ""}
         </text>
       )}
     </g>

@@ -53,6 +53,33 @@ export function useCreateProductAssignment() {
   });
 }
 
+export interface BulkCreateProductAssignmentsBody {
+  surfaceId: string;
+  items: { positionId: string; productId: string; facingQty: number; displayOrder?: number }[];
+}
+
+export interface BulkCreateProductAssignmentsResult {
+  created: ProductAssignment[];
+  createdCount: number;
+}
+
+export function useBulkCreateProductAssignments() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BulkCreateProductAssignmentsBody) =>
+      apiClient.post<BulkCreateProductAssignmentsResult>(
+        "/api/product-assignments/bulk",
+        input
+      ),
+    // await để refetch xong mới tới onSuccess của caller (nơi xoá pending).
+    // Không await thì hàng trăm ô sẽ nháy về màu "trống" 1 frame giữa lúc bỏ
+    // pending và lúc dữ liệu mới về.
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["product-assignments"] });
+    },
+  });
+}
+
 export type UpdateProductAssignmentBody = Partial<{
   facingQty: number;
   displayOrder: number;

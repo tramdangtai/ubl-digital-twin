@@ -1,11 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { AppError, NotFoundError, ValidationError } from "../api/errors";
+import { AppError, NotFoundError, ValidationError, type FieldError } from "../api/errors";
 import { assertNotStale } from "./concurrency";
 import { db } from "../db/client";
-import { displayPosition, product, productAssignment } from "../db/schema";
+import { displayPosition, product, productAssignment, surface } from "../db/schema";
 import type { AssignmentWithProduct } from "../types/entities";
 import type {
+  BulkCreateProductAssignmentInput,
   CreateProductAssignmentInput,
   UpdateProductAssignmentInput,
 } from "../validation/product-assignment";
@@ -140,6 +141,160 @@ export async function createProductAssignment(input: CreateProductAssignmentInpu
     })
     .returning();
   return row;
+}
+
+/**
+ * Gán hàng loạt — nhận N cặp (Display Position, Product) từ Draft ở Frontend và
+ * ghi trong 1 transaction.
+ *
+ * Nguyên tắc: validate TOÀN BỘ trước, có bất kỳ lỗi nào thì KHÔNG ghi gì cả
+ * (all-or-nothing). Một planogram ghi được nửa chừng tệ hơn là bắt user thử lại.
+ * Lỗi trả về theo từng item với `field` dạng `items.<index>.<field>` để UI tô đỏ
+ * đúng ô nào sai — trùng định dạng path mà Zod tự sinh.
+ *
+ * 5 query cố định bất kể bao nhiêu item, không N+1.
+ */
+export async function bulkCreateProductAssignments(input: BulkCreateProductAssignmentInput) {
+  const { surfaceId, items } = input;
+  const positionIds = items.map((i) => i.positionId);
+  const productIds = [...new Set(items.map((i) => i.productId))];
+
+  // (1) Surface phải tồn tại + Active — kiểm cả request, không phải per-item.
+  const [surfaceRow] = await db
+    .select({ status: surface.status })
+    .from(surface)
+    .where(eq(surface.surfaceId, surfaceId));
+  if (!surfaceRow) throw new NotFoundError("Surface");
+  if (surfaceRow.status !== "Active") {
+    throw new AppError(
+      "Không thể gán Product vào một Surface đã Archived.",
+      422,
+      "PARENT_NOT_ACTIVE"
+    );
+  }
+
+  // (2) Toàn bộ Display Position trong 1 query.
+  const positionRows = await db
+    .select({
+      positionId: displayPosition.positionId,
+      surfaceId: displayPosition.surfaceId,
+      status: displayPosition.status,
+      facingLimit: displayPosition.facingLimit,
+    })
+    .from(displayPosition)
+    .where(inArray(displayPosition.positionId, positionIds));
+  const positionById = new Map(positionRows.map((p) => [p.positionId, p]));
+
+  // (3) Toàn bộ Product trong 1 query.
+  const productRows = await db
+    .select({ productId: product.productId, status: product.status })
+    .from(product)
+    .where(inArray(product.productId, productIds));
+  const productById = new Map(productRows.map((p) => [p.productId, p]));
+
+  // (4) Position nào đã có Active Assignment rồi.
+  const existingRows = await db
+    .select({ positionId: productAssignment.positionId })
+    .from(productAssignment)
+    .where(
+      and(
+        inArray(productAssignment.positionId, positionIds),
+        eq(productAssignment.status, "Active")
+      )
+    );
+  const occupied = new Set(existingRows.map((r) => r.positionId));
+
+  // (5) Gom mọi lỗi, không dừng ở lỗi đầu tiên — user sửa được 1 lượt.
+  const errors: FieldError[] = [];
+  items.forEach((item, idx) => {
+    const position = positionById.get(item.positionId);
+    if (!position) {
+      errors.push({
+        field: `items.${idx}.positionId`,
+        code: "NOT_FOUND",
+        message: "Display Position không tồn tại.",
+      });
+      return;
+    }
+    if (position.status !== "Active") {
+      errors.push({
+        field: `items.${idx}.positionId`,
+        code: "PARENT_NOT_ACTIVE",
+        message: "Display Position đã Archived.",
+      });
+    }
+    if (position.surfaceId !== surfaceId) {
+      errors.push({
+        field: `items.${idx}.positionId`,
+        code: "POSITION_NOT_IN_SURFACE",
+        message: "Display Position không thuộc Surface đang mở.",
+      });
+    }
+    if (occupied.has(item.positionId)) {
+      errors.push({
+        field: `items.${idx}.positionId`,
+        code: "ACTIVE_ASSIGNMENT_EXISTS",
+        message: "Display Position này đã có Product Assignment Active.",
+      });
+    }
+    // CLAUDE.md quyết định #6 — cross-table nên enforce ở Service layer.
+    // Viết rõ cả null lẫn undefined: facingLimit nullable trong DB.
+    if (
+      position.facingLimit !== null &&
+      position.facingLimit !== undefined &&
+      item.facingQty > position.facingLimit
+    ) {
+      errors.push({
+        field: `items.${idx}.facingQty`,
+        code: "EXCEEDS_FACING_LIMIT",
+        message: `Facing Quantity (${item.facingQty}) vượt quá Facing Limit của Display Position (${position.facingLimit}).`,
+      });
+    }
+
+    const productRow = productById.get(item.productId);
+    if (!productRow) {
+      errors.push({
+        field: `items.${idx}.productId`,
+        code: "NOT_FOUND",
+        message: "Product không tồn tại.",
+      });
+    } else if (productRow.status !== "Active") {
+      errors.push({
+        field: `items.${idx}.productId`,
+        code: "PRODUCT_NOT_ACTIVE",
+        message: "Không thể gán một Product đã Archived.",
+      });
+    }
+  });
+
+  if (errors.length > 0) {
+    const badItems = new Set(errors.map((e) => e.field.split(".")[1])).size;
+    throw new ValidationError(
+      errors,
+      `${badItems}/${items.length} vị trí không hợp lệ — chưa có gì được lưu.`
+    );
+  }
+
+  // (6) Sạch rồi mới ghi. INSERT nhiều dòng vốn đã atomic; bọc transaction để
+  // đúng pattern chung của repo và sẵn sàng cho bước ghi thứ hai sau này.
+  // Race với user khác chen vào giữa (4) và đây → unique index bắn 23505,
+  // translatePostgresError dịch sang 409. KHÔNG dùng onConflictDoNothing vì nó
+  // âm thầm bỏ item mà vẫn báo thành công.
+  const created = await db.transaction(async (tx) =>
+    tx
+      .insert(productAssignment)
+      .values(
+        items.map((i) => ({
+          positionId: i.positionId,
+          productId: i.productId,
+          facingQty: i.facingQty,
+          displayOrder: i.displayOrder,
+        }))
+      )
+      .returning()
+  );
+
+  return { created, createdCount: created.length };
 }
 
 export async function updateProductAssignment(

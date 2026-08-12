@@ -35,5 +35,39 @@ export const updateProductAssignmentSchema = z
     path: ["endDate"],
   });
 
+/**
+ * Gán hàng loạt — user chọn 1 Product rồi bấm lần lượt các ô trên canvas.
+ * Draft giữ ở Frontend, chỉ ghi DB 1 lần khi bấm Lưu (nguyên tắc #1).
+ *
+ * Lỗi Zod ở đây sinh path dạng `items.3.facingQty`, trùng đúng định dạng mà
+ * Service dựng cho lỗi nghiệp vụ — client chỉ cần 1 cách parse cho cả hai.
+ */
+export const bulkAssignItemSchema = z.object({
+  positionId: uuidSchema,
+  productId: uuidSchema,
+  facingQty: z.number().int().min(1, "Facing Quantity phải >= 1"),
+  displayOrder: z.number().int().default(0),
+});
+
+export const MAX_BULK_ASSIGN_ITEMS = 200;
+
+export const bulkCreateProductAssignmentSchema = z
+  .object({
+    // Mang theo surfaceId để Service chặn được draft cũ ghi nhầm sang Surface khác.
+    surfaceId: uuidSchema,
+    items: z
+      .array(bulkAssignItemSchema)
+      .min(1, "Phải có ít nhất 1 Display Position.")
+      .max(
+        MAX_BULK_ASSIGN_ITEMS,
+        `Tối đa ${MAX_BULK_ASSIGN_ITEMS} vị trí trong 1 lần lưu — hãy Lưu rồi gán tiếp.`
+      ),
+  })
+  .refine((val) => new Set(val.items.map((i) => i.positionId)).size === val.items.length, {
+    message: "Danh sách có Display Position trùng lặp.",
+    path: ["items"],
+  });
+
 export type CreateProductAssignmentInput = z.infer<typeof createProductAssignmentSchema>;
 export type UpdateProductAssignmentInput = z.infer<typeof updateProductAssignmentSchema>;
+export type BulkCreateProductAssignmentInput = z.infer<typeof bulkCreateProductAssignmentSchema>;

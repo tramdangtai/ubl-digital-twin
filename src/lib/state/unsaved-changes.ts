@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 
+import { useBulkAssignDraftStore } from "./bulk-assign-draft";
 import { useDisplayPositionDraftStore } from "./display-position-draft";
 import { useFixtureDraftStore } from "./fixture-draft";
 
@@ -39,6 +40,38 @@ export function confirmDiscardUnsavedChanges(): boolean {
 }
 
 /**
+ * Guard riêng cho Draft gán hàng loạt.
+ *
+ * KHÔNG gộp vào cờ `isDirty` ở trên: cờ đó dành cho Draft local-state chết theo
+ * unmount, còn Draft gán hàng loạt nằm trong Zustand store nên sống qua mọi lần
+ * đổi selection — gộp vào sẽ hỏi lại mỗi lần user bấm 1 ô trong cùng Surface.
+ *
+ * Chỉ hỏi khi THẬT SỰ rời khỏi Surface đang dán. Đổi tab Explorer hay chọn
+ * Product khác đều không gọi hàm này — user phải qua lại Product Library được.
+ *
+ * @param nextSurfaceId Surface sắp chuyển tới (null = rời hẳn Surface View).
+ * @returns false = huỷ điều hướng.
+ */
+export function confirmLeaveBulkAssign(nextSurfaceId: string | null): boolean {
+  const state = useBulkAssignDraftStore.getState();
+  const count = Object.keys(state.pending).length;
+
+  if (state.surfaceId === null) return true;
+  if (nextSurfaceId === state.surfaceId) return true;
+
+  if (count === 0) {
+    state.endSession();
+    return true;
+  }
+
+  const confirmed = window.confirm(
+    `Bạn còn ${count} vị trí chưa lưu trong phiên gán hàng loạt. Rời khỏi Surface này sẽ mất chúng. Tiếp tục?`
+  );
+  if (confirmed) state.endSession();
+  return confirmed;
+}
+
+/**
  * Cảnh báo khi đóng tab/refresh trong lúc còn Draft chưa lưu — gộp cả 3 nguồn
  * Draft hiện có: local-state Draft (Retailer/Store/Surface/Product, qua cờ
  * `isDirty` ở trên) và Zustand draft store của Fixture/Display Position (biết
@@ -50,7 +83,8 @@ export function useBeforeUnloadGuard() {
       const hasUnsaved =
         useUnsavedChangesStore.getState().isDirty ||
         useFixtureDraftStore.getState().editingFixtureId !== null ||
-        useDisplayPositionDraftStore.getState().editingPositionId !== null;
+        useDisplayPositionDraftStore.getState().editingPositionId !== null ||
+        Object.keys(useBulkAssignDraftStore.getState().pending).length > 0;
       if (!hasUnsaved) return;
       e.preventDefault();
     };

@@ -33,6 +33,7 @@ import {
 } from "./inspector-shared";
 import { AssignProductPanel, CreateProductPanel, ProductDetailPanel } from "./product-panels";
 import { ProductThumb } from "./product-thumb";
+import { useBulkAssignDraftStore } from "@/lib/state/bulk-assign-draft";
 import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
 import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
 import { useFixtureDraftStore } from "@/lib/state/fixture-draft";
@@ -1745,6 +1746,87 @@ function BulkGeneratePanel({ surfaceId, onCancel }: { surfaceId: string; onCance
   );
 }
 
+/**
+ * Danh sách các ô đang chờ lưu trong phiên gán hàng loạt, gom theo Product.
+ * Là nơi hàng trăm ô đang chờ trở nên kiểm tra được — canvas chỉ cho thấy màu.
+ */
+function BulkAssignReviewPanel() {
+  const { pending, itemErrors, removePending } = useBulkAssignDraftStore();
+  const entries = Object.entries(pending);
+
+  // Gom theo product để đọc được "SKU-1000 — 12 ô" thay vì 12 dòng rời rạc.
+  const byProduct = new Map<
+    string,
+    { itemCode: string; description: string; positionIds: string[] }
+  >();
+  for (const [positionId, p] of entries) {
+    const group = byProduct.get(p.productId) ?? {
+      itemCode: p.itemCode,
+      description: p.description,
+      positionIds: [],
+    };
+    group.positionIds.push(positionId);
+    byProduct.set(p.productId, group);
+  }
+
+  const errorEntries = Object.entries(itemErrors);
+
+  return (
+    <>
+      <h3 className="mb-3 font-semibold text-ubl-secondary">Gán hàng loạt</h3>
+
+      {entries.length === 0 ? (
+        <p className="text-sm text-muted">
+          Chưa chọn ô nào. Chọn một sản phẩm ở thanh phía trên Workspace rồi bấm vào các ô trên
+          canvas.
+        </p>
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-muted">
+            {entries.length} ô đang chờ, {byProduct.size} sản phẩm. Chưa có gì được lưu.
+          </p>
+          {[...byProduct.entries()].map(([productId, g]) => (
+            <div key={productId} className="mb-3 rounded border border-border p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm font-medium text-ubl-secondary">{g.itemCode}</span>
+                <span className="text-xs text-muted">{g.positionIds.length} ô</span>
+              </div>
+              <p className="mb-2 truncate text-xs text-muted">{g.description}</p>
+              <div className="flex flex-wrap gap-1">
+                {g.positionIds.map((id, i) => (
+                  <button
+                    key={id}
+                    onClick={() => removePending(id)}
+                    title="Bỏ ô này khỏi danh sách chờ"
+                    className={`rounded border px-1.5 py-0.5 text-[11px] hover:bg-muted-bg ${
+                      itemErrors[id] ? "border-red-300 text-red-600" : "border-border text-muted"
+                    }`}
+                  >
+                    #{i + 1} ✕
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {errorEntries.length > 0 && (
+        <div className="mt-3 rounded border border-red-200 bg-red-50 p-2">
+          <p className="mb-1 text-xs font-medium text-red-700">
+            {errorEntries.length} ô bị từ chối khi lưu:
+          </p>
+          <ul className="list-inside list-disc text-[11px] text-red-600">
+            {errorEntries.slice(0, 8).map(([id, msg]) => (
+              <li key={id}>{msg}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Root — header render 1 lần, body thay đổi theo selection/mode
 // ---------------------------------------------------------------------------
@@ -1791,6 +1873,8 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
         onCancel={cancelCreate}
       />
     );
+  } else if (mode === "bulk-assign-product") {
+    body = <BulkAssignReviewPanel />;
   } else if (explorerTab === "products") {
     body = selectedProduct ? (
       <ProductDetailPanel product={selectedProduct} />

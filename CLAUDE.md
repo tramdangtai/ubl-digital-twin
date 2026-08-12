@@ -193,9 +193,16 @@ Phase 1 phải kéo sớm một phần nhỏ của Part 09 §4 (vốn ghi là Ph
   Backend transaction như quy trình chuẩn, chỉ là Draft chứa nhiều object thay vì 1.
 - **Duplicate Fixture** (copy cả cây con Surface + Display Position) — cân nhắc thêm nếu sau vertical
   slice đầu tiên thấy vẫn cần thiết.
+- **Gán hàng loạt Product (Giai đoạn 10, Tài duyệt 2026-08-12)**: chọn 1 Product rồi bấm lần lượt các
+  Display Position trên canvas để gán. **Lý do kéo vào Phase 1 giống hệt lý do của Bulk-generate**:
+  gán từng ô tốn 5 click + gõ tìm kiếm + 2 lần đổi tab Explorer, nhân với 400–4000 vị trí/store thì
+  không ai làm nổi. Vẫn đúng Draft → Save → Backend transaction, chỉ là Draft chứa nhiều
+  assignment thay vì 1 — cùng khuôn với Bulk-generate, không phải pattern mới.
 
-Không kéo thêm gì khác từ Phase 2 (Snap/Alignment/Multi-select/Version History/Undo-Redo vẫn để
-Phase 2 đúng như spec).
+Không kéo thêm gì khác từ Phase 2 (Snap/Alignment/Version History/Undo-Redo vẫn để Phase 2 đúng như
+spec). **Lưu ý**: dòng này trước đây có ghi cả "Multi-select" — đã bỏ ra vì gán hàng loạt ở trên
+chính là dạng multi-select và đã được duyệt vào Phase 1. Undo trong phiên gán (bấm lại ô để gỡ) là
+hệ quả tự nhiên của Draft, **không phải** Undo-Redo toàn cục của Phase 2.
 
 ## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 6, 2026-08-12)
 
@@ -463,10 +470,63 @@ có thật trong Supabase. **Bài học: trước khi test app, luôn chạy `np
   CORS issue), render `<image>` + `<clipPath>` trong SVG trước Display Positions.
 - `npx tsc --noEmit`, `npm run lint`, `npm run build` đều sạch.
 
+**Giai đoạn 10 (UI/UX cho luồng sản phẩm cuối) đã xong:**
+
+Xuất phát từ phiên thảo luận UI/UX với Tài (2026-08-12). Ba việc, làm theo thứ tự B → C → A.
+
+- **Phần B — khung Display Position che kín ảnh nền (lỗi Tài phát hiện).** `workspace.tsx` vẽ `fill`
+  màu đặc không có `fill-opacity`, ảnh nền của Giai đoạn 9 bị đè 100% → tính năng gần như vô dụng.
+  Sửa: khi Surface có ảnh nền thì khung dùng `fillOpacity`, viền dày lên, chữ có dải nền bán trong
+  suốt. Thêm nút **"Khung: Đậm | Vừa | Mờ"** trong WorkspaceHeader (chỉ hiện khi có ảnh nền), lưu
+  `localStorage` — View State, đúng tiền lệ quyết định D2, **không thêm cột DB**. PNG export áp cùng
+  độ mờ để ảnh khớp màn hình. Nhân tiện đổi thứ tự chữ trên canvas thành item_code → description cho
+  khớp bản PNG.
+- **Phần C — nội dung file PNG.** Dải tiêu đề thêm dòng thống kê (tổng / đã gán / còn trống / số SKU).
+  Mỗi ô có **số thứ tự** trong vòng tròn ở góc trên-phải. CSV thêm cột **`stt`** ở đầu (30 → 31 cột),
+  dùng chung thứ tự sort `y` rồi `x` với PNG nên số trên ảnh tra được sang CSV.
+- **Phần A — gán hàng loạt** (xem mục "Bổ sung scope Phase 1" ở trên để biết lý do kéo vào Phase 1).
+  - `src/lib/state/bulk-assign-draft.ts` — Zustand, **không `persist`**. `pending` keyed theo
+    `positionId` nên **một phiên gán được nhiều Product khác nhau**. `facingQty` chốt tại lúc dán,
+    đổi số ở thanh bar không sửa ngược các ô đã dán (`applyFacingQtyToAllPending()` là hành động
+    riêng, có chủ ý). Bấm lại ô đang pending cùng product = gỡ ra — đây chính là undo.
+  - **Nguồn sự thật của "đang ở chế độ dán" là `bulkAssignDraft.surfaceId`, KHÔNG phải
+    `selection.mode`** — vì mọi action `select*` đều reset `mode` về `"view"`, mà phiên dán phải sống
+    sót khi user bấm quanh Explorer trong cùng Surface. `mode` chỉ dùng để Inspector chọn panel.
+  - `confirmLeaveBulkAssign()` trong `unsaved-changes.ts` — **cố ý KHÔNG gộp vào cờ `isDirty`** (cờ
+    đó cho Draft local-state chết theo unmount). Chỉ hỏi khi thật sự rời Surface đang dán; đổi tab
+    Explorer / chọn Product khác **không** hỏi, để user qua lại Product Library được.
+  - Canvas: click chuyển từ `pointerdown` sang `pointerup` **có ngưỡng di chuyển 4px** — không có
+    ngưỡng này thì kéo pan bắt đầu từ trên một ô sẽ vô tình dán sản phẩm vào đó.
+  - `POST /api/product-assignments/bulk` + `bulkCreateProductAssignments()`: validate **toàn bộ
+    trước, có lỗi thì không ghi gì** (all-or-nothing), 5 query cố định bất kể bao nhiêu item. Lỗi
+    per-item dùng đúng envelope `FieldError[]` sẵn có với `field` dạng `items.<index>.<field>` —
+    trùng định dạng path Zod tự sinh nên client parse 1 kiểu cho cả hai nguồn. **Không** dùng
+    `onConflictDoNothing` (sẽ âm thầm bỏ item mà vẫn báo thành công).
+  - `useBulkCreateProductAssignments()` **`await` invalidate** trong `onSuccess` của hook trước khi
+    caller xoá pending — không await thì hàng trăm ô nháy về màu trống 1 frame.
+  - Còn ô chưa lưu → **disable nút xuất PNG/CSV** (nguyên tắc #8: file xuất ra không được ngụ ý dữ
+    liệu chưa persist là thật).
+- **Đã verify qua browser thật + query thẳng Supabase**: dán 5 ô → DB **không đổi** (8 → 8, chứng minh
+  Draft không ghi DB); toggle gỡ đúng; bấm ô đã có hàng bị chặn không gọi API; 2 Product trong 1 phiên
+  → Save → DB đúng 4 + 2 record; **all-or-nothing**: lô 2 item có 1 item lỗi → `422` với
+  `items.1.positionId`, đếm record trước/sau đều 14 (item hợp lệ cũng không được ghi); đổi tab Explorer
+  **không hỏi** và draft còn nguyên, rời Surface **có hỏi** và Cancel giữ nguyên draft; Huỷ phiên →
+  DB không đổi; Viewer không thấy nút gán hàng loạt, gọi thẳng API vẫn **403**, nhưng **vẫn export
+  được** (đúng quyết định D6).
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` đều sạch.
+- **Dữ liệu test còn lại**: 6 Product Assignment mới trên Surface `Emart Sala / Kệ trái / Front` (4 ô
+  item_code `17TY0405`, 2 ô `90686`) — tạo trong lúc test, an toàn để giữ hoặc unassign.
+
 ### Milestone tiếp theo
 
-**Giai đoạn 10 — Testing & Deploy**: thêm test runner (Vitest/Playwright), CI, deploy production
-(Vercel). Xem bảng giai đoạn đầy đủ trong lịch sử chat.
+**Testing & Deploy**: thêm test runner (Vitest/Playwright) + CI. Deploy production (Vercel) đã chạy
+tự động theo `main` từ Giai đoạn 7.
+
+Các cải thiện UI/UX đã khảo sát nhưng Tài **chưa chọn** làm (giữ lại để cân nhắc sau): fit-to-view
+khi mở Surface (hiện luôn mở ở 25%, `zoomTo` trong `workspace-view.ts` là dead code), hover tooltip
+trên ô, phân biệt trạng thái "đang tải" với "chưa có dữ liệu" (hiện nhấp nháy "Chưa có Display
+Position" mỗi lần mở Surface vì `isLoading` không được đọc), breadcrumb, debounce ô tìm kiếm Product
+(hiện gọi API mỗi ký tự), phím tắt Enter/Esc trong form, đường khôi phục mục đã Archive.
 
 ## Commands
 

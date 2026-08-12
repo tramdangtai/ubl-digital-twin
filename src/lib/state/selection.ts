@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-import { confirmDiscardUnsavedChanges } from "./unsaved-changes";
+import { useBulkAssignDraftStore, type StampProductRef } from "./bulk-assign-draft";
+import { confirmDiscardUnsavedChanges, confirmLeaveBulkAssign } from "./unsaved-changes";
 
 /**
  * Selection / Interaction Mode State — Part 05 §7-8, §10.
@@ -29,7 +30,8 @@ interface SelectionState {
     | "create-display-position"
     | "bulk-generate-display-position"
     | "create-product"
-    | "assign-product";
+    | "assign-product"
+    | "bulk-assign-product";
 
   setExplorerTab: (tab: "twin" | "products") => void;
   selectRetailer: (retailerId: string) => void;
@@ -46,6 +48,8 @@ interface SelectionState {
   startBulkGenerate: () => void;
   startCreateProduct: () => void;
   startAssignProduct: () => void;
+  startBulkAssignProduct: (surfaceId: string, product: StampProductRef | null) => void;
+  endBulkAssignProduct: () => void;
   cancelCreate: () => void;
 }
 
@@ -66,6 +70,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
 
   selectRetailer: (retailerId) => {
     if (!confirmDiscardUnsavedChanges()) return;
+    if (!confirmLeaveBulkAssign(null)) return;
     set({
       explorerTab: "twin",
       selectedRetailerId: retailerId,
@@ -78,6 +83,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   },
   selectStore: (retailerId, storeId) => {
     if (!confirmDiscardUnsavedChanges()) return;
+    if (!confirmLeaveBulkAssign(null)) return;
     set({
       explorerTab: "twin",
       selectedRetailerId: retailerId,
@@ -90,6 +96,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   },
   selectFixture: (fixtureId) => {
     if (!confirmDiscardUnsavedChanges()) return;
+    if (!confirmLeaveBulkAssign(null)) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: fixtureId,
@@ -100,6 +107,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   },
   selectSurface: (fixtureId, surfaceId) => {
     if (!confirmDiscardUnsavedChanges()) return;
+    if (!confirmLeaveBulkAssign(surfaceId)) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: fixtureId,
@@ -140,6 +148,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   },
   startCreateFixture: () => {
     if (!confirmDiscardUnsavedChanges()) return;
+    if (!confirmLeaveBulkAssign(null)) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: null,
@@ -150,6 +159,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   },
   startCreateSurface: (fixtureId) => {
     if (!confirmDiscardUnsavedChanges()) return;
+    if (!confirmLeaveBulkAssign(null)) return;
     set({
       explorerTab: "twin",
       selectedFixtureId: fixtureId,
@@ -171,5 +181,20 @@ export const useSelectionStore = create<SelectionState>((set) => ({
     set({ explorerTab: "products", selectedProductId: null, mode: "create-product" });
   },
   startAssignProduct: () => set({ mode: "assign-product" }),
+
+  // Nguồn sự thật của "đang ở chế độ dán" là bulkAssignDraft.surfaceId, KHÔNG
+  // phải mode — vì mọi select* đều reset mode về "view" mà phiên dán phải sống
+  // sót khi user bấm quanh Explorer trong cùng Surface. mode chỉ để Inspector
+  // biết hiện panel review.
+  startBulkAssignProduct: (surfaceId, product) => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    useBulkAssignDraftStore.getState().startSession(surfaceId, product);
+    set({ explorerTab: "twin", selectedSurfaceId: surfaceId, mode: "bulk-assign-product" });
+  },
+  endBulkAssignProduct: () => {
+    useBulkAssignDraftStore.getState().endSession();
+    set({ mode: "view" });
+  },
+
   cancelCreate: () => set({ mode: "view" }),
 }));

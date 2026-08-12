@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { useCreateProductAssignment } from "@/lib/api/hooks/use-product-assignments";
 import { useCreateProduct, useUpdateProduct } from "@/lib/api/hooks/use-products";
+import { useBulkAssignDraftStore } from "@/lib/state/bulk-assign-draft";
 import { useSelectionStore } from "@/lib/state/selection";
 import type { Product } from "@/lib/types/entities";
 
@@ -187,7 +188,13 @@ export function ProductDetailPanel({ product }: { product: Product }) {
     imageUrl: product.imageUrl ?? "",
   });
   const { mutate, isPending, error, reset } = useUpdateProduct(product.productId);
-  const { selectedDisplayPositionId, startAssignProduct } = useSelectionStore();
+  const {
+    selectedDisplayPositionId,
+    selectedSurfaceId,
+    startAssignProduct,
+    startBulkAssignProduct,
+  } = useSelectionStore();
+  const bulkSurfaceId = useBulkAssignDraftStore((s) => s.surfaceId);
 
   useEffect(() => {
     setDraft({
@@ -345,7 +352,15 @@ export function ProductDetailPanel({ product }: { product: Product }) {
           {selectedDisplayPositionId ? (
             <button
               onClick={startAssignProduct}
-              className="mt-4 w-full rounded bg-ubl-secondary px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+              // Đang có phiên gán hàng loạt → chặn luồng gán 1-ô để hai luồng
+              // không cùng nhắm vào một Display Position.
+              disabled={bulkSurfaceId !== null}
+              title={
+                bulkSurfaceId !== null
+                  ? "Đang trong phiên gán hàng loạt — thoát phiên đó trước"
+                  : undefined
+              }
+              className="mt-4 w-full rounded bg-ubl-secondary px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
               Gán Product này vào Display Position đã chọn
             </button>
@@ -353,6 +368,23 @@ export function ProductDetailPanel({ product }: { product: Product }) {
             <p className="mt-4 text-xs text-muted">
               Chọn 1 Display Position ở tab “Digital Twin” để gán Product này vào đó.
             </p>
+          )}
+
+          {/* Lối vào phụ cho gán hàng loạt — giữ thói quen "chọn Product trước". */}
+          {selectedSurfaceId && bulkSurfaceId === null && (
+            <button
+              onClick={() =>
+                startBulkAssignProduct(selectedSurfaceId, {
+                  productId: product.productId,
+                  itemCode: product.itemCode,
+                  description: product.description,
+                  imageUrl: product.imageUrl ?? null,
+                })
+              }
+              className="mt-2 w-full rounded border border-ubl-primary/40 bg-ubl-primary/10 px-3 py-2 text-sm font-medium text-ubl-secondary hover:bg-ubl-primary/20"
+            >
+              ⌖ Gán hàng loạt trên Surface đang mở
+            </button>
           )}
         </>
       )}
