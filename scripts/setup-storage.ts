@@ -7,10 +7,13 @@
  * Bucket private + service-role key bypass RLS — đúng thiết kế E3.
  * KHÔNG tạo RLS policy nào; mọi truy cập đi qua route proxy /api/background-images/[id]/file.
  */
-import { createAdminClient } from "@/lib/supabase/admin";
-import { SURFACE_BACKGROUNDS_BUCKET } from "@/lib/storage/constants";
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
 
 async function main() {
+  const { createAdminClient } = await import("../src/lib/supabase/admin");
+  const { SURFACE_BACKGROUNDS_BUCKET } = await import("../src/lib/storage/constants");
   const supabase = createAdminClient();
 
   const { data: existing, error: listError } = await supabase.storage.listBuckets();
