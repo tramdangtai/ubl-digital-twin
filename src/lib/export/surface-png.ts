@@ -108,7 +108,9 @@ function buildSurfaceSvgString(
   // Sắp xếp theo y rồi x để render theo thứ tự tự nhiên.
   const sorted = [...positions].sort((a, b) => a.y - b.y || a.x - b.x);
 
-  const positionShapes = sorted.map((pos) => {
+  // Mỗi position cần clipPath riêng để chữ không tràn ra phải.
+  const clipDefs: string[] = [];
+  const positionShapes = sorted.map((pos, idx) => {
     const rect = positionScreenRect(
       { x: pos.x, y: pos.y, widthMm: pos.widthMm, heightMm: pos.heightMm },
       scale,
@@ -122,6 +124,12 @@ function buildSurfaceSvgString(
     const stroke = asgn ? OCCUPIED_STROKE : EMPTY_STROKE;
     const textFill = asgn ? OCCUPIED_TEXT : EMPTY_TEXT;
 
+    // clipPath giới hạn text trong khung position (padding 3px mỗi bên).
+    const clipId = `cp-${idx}`;
+    clipDefs.push(
+      `<clipPath id="${clipId}"><rect x="${rect.x + 3}" y="${rect.y}" width="${rect.width - 6}" height="${rect.height}"/></clipPath>`
+    );
+
     const baseShape = `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="${fill}" stroke="${stroke}" stroke-width="1.25" rx="2"/>`;
 
     let content = "";
@@ -129,24 +137,28 @@ function buildSurfaceSvgString(
     if (cellMode === "image" && prod?.imageUrl) {
       const dataUri = dataUris.get(prod.imageUrl);
       if (dataUri) {
-        // Hiện ảnh + dải item_code ở đáy.
+        // Hiện ảnh + dải item_code ở đáy (font nhỏ hơn vì không gian bị ảnh chiếm).
+        const labelH = 20;
         content = `
           <image href="${dataUri}" x="${rect.x + 2}" y="${rect.y + 2}" width="${rect.width - 4}" height="${rect.height - 4}" preserveAspectRatio="xMidYMid meet"/>
-          ${rect.height > 40 ? `
-          <rect x="${rect.x}" y="${rect.y + rect.height - 18}" width="${rect.width}" height="18" fill="rgba(255,255,255,0.85)"/>
-          <text x="${rect.x + 4}" y="${rect.y + rect.height - 6}" font-size="8" fill="${OCCUPIED_TEXT}">${escXml(prod.itemCode)}</text>
+          ${rect.height > 50 ? `
+          <rect x="${rect.x}" y="${rect.y + rect.height - labelH}" width="${rect.width}" height="${labelH}" fill="rgba(255,255,255,0.88)"/>
+          <text x="${rect.x + 4}" y="${rect.y + rect.height - 5}" font-size="11" fill="${OCCUPIED_TEXT}" clip-path="url(#${clipId})">${escXml(prod.itemCode)}</text>
           ` : ""}
         `;
       } else {
         // Ảnh fetch thất bại — fallback về chữ.
-        content = buildTextContent(rect, pos, asgn, textFill);
+        content = buildTextContent(rect, pos, asgn, textFill, clipId);
       }
     } else {
-      content = buildTextContent(rect, pos, asgn, textFill);
+      content = buildTextContent(rect, pos, asgn, textFill, clipId);
     }
 
     return baseShape + content;
   });
+
+  // clipDefs được thu thập ở vòng lặp trên, đặt vào <defs> ở đây.
+  const defsBlock = `<defs>${clipDefs.join("")}</defs>`;
 
   // Ảnh nền — fit theo backgroundFit (contain / cover / stretch).
   const bgPreserve =
@@ -170,6 +182,8 @@ function buildSurfaceSvgString(
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"
     width="${totalWidth}" height="${totalHeight}"
     font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  ${defsBlock}
+
   <!-- Nền trắng đặc — PNG không nền sẽ ra nền đen khi dán vào PowerPoint -->
   <rect width="${totalWidth}" height="${totalHeight}" fill="#ffffff"/>
 
@@ -196,18 +210,22 @@ function buildTextContent(
   rect: { x: number; y: number; width: number; height: number },
   pos: { displayType: string },
   asgn: { product: { description: string; itemCode: string } } | undefined,
-  textFill: string
+  textFill: string,
+  clipId: string
 ): string {
+  if (rect.width <= 20) return "";
+
+  const FONT = 16;
+  const LINE = 22; // khoảng cách dòng
+
   if (!asgn) {
-    if (rect.width <= 30) return "";
-    return `<text x="${rect.x + 4}" y="${rect.y + 12}" font-size="9" fill="${textFill}">${escXml(pos.displayType)}</text>`;
+    return `<text x="${rect.x + 4}" y="${rect.y + FONT + 2}" font-size="${FONT}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(pos.displayType)}</text>`;
   }
-  let text = "";
-  if (rect.width > 30) {
-    text += `<text x="${rect.x + 4}" y="${rect.y + 12}" font-size="9" fill="${textFill}">${escXml(asgn.product.description)}</text>`;
-  }
-  if (rect.width > 30 && rect.height > 26) {
-    text += `<text x="${rect.x + 4}" y="${rect.y + 23}" font-size="8" fill="#166534">${escXml(asgn.product.itemCode)}</text>`;
+
+  // item_code trước, description sau — clip ngăn tràn phải, tràn xuống tự bị cắt bởi clipPath.
+  let text = `<text x="${rect.x + 4}" y="${rect.y + FONT + 2}" font-size="${FONT}" font-weight="600" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.itemCode)}</text>`;
+  if (rect.height > LINE + FONT + 4) {
+    text += `<text x="${rect.x + 4}" y="${rect.y + FONT + 2 + LINE}" font-size="${FONT}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.description)}</text>`;
   }
   return text;
 }
