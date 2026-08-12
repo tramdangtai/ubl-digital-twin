@@ -11,6 +11,7 @@ import { useStores } from "@/lib/api/hooks/use-stores";
 import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
 import { useSelectionStore } from "@/lib/state/selection";
 import type { Store } from "@/lib/types/entities";
+import { ProductThumb } from "./product-thumb";
 
 const rowClass = (active: boolean) =>
   `flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted-bg ${
@@ -319,19 +320,22 @@ function ProductLibraryList() {
             <button
               key={p.productId}
               onClick={() => selectProduct(p.productId)}
-              className={`mb-1 flex w-full flex-col rounded px-2 py-1.5 text-left transition-colors hover:bg-muted-bg ${
+              className={`mb-1 flex w-full flex-row items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-muted-bg ${
                 selected ? "bg-ubl-primary/10" : ""
               }`}
             >
-              <span
-                className={`text-sm ${selected ? "font-medium text-ubl-secondary" : "text-foreground"}`}
-              >
-                {p.description}
-              </span>
-              <span className="text-xs text-muted">
-                {p.itemCode}
-                {p.brand ? ` · ${p.brand}` : ""}
-              </span>
+              <ProductThumb url={p.imageUrl} alt={p.description} size={32} />
+              <div className="flex min-w-0 flex-col">
+                <span
+                  className={`truncate text-sm ${selected ? "font-medium text-ubl-secondary" : "text-foreground"}`}
+                >
+                  {p.description}
+                </span>
+                <span className="truncate text-xs text-muted">
+                  {p.itemCode}
+                  {p.brand ? ` · ${p.brand}` : ""}
+                </span>
+              </div>
             </button>
           );
         })}

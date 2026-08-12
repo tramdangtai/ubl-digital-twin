@@ -125,6 +125,14 @@ export interface ProductAssignment {
   updatedAt: string;
 }
 
+/**
+ * Giai đoạn 8 A2 — AssignmentWithProduct dùng cho batch query by-surface,
+ * thay thế pattern N+1 (1 query/position) trong workspace.tsx.
+ */
+export interface AssignmentWithProduct extends ProductAssignment {
+  product: Product;
+}
+
 /** Giai đoạn 6 — Auth & Authorization (CLAUDE.md quyết định #1). */
 export type UserRole = "Admin" | "Editor" | "Viewer";
 

@@ -4,6 +4,7 @@ import { AppError, NotFoundError, ValidationError } from "../api/errors";
 import { assertNotStale } from "./concurrency";
 import { db } from "../db/client";
 import { displayPosition, product, productAssignment } from "../db/schema";
+import type { AssignmentWithProduct } from "../types/entities";
 import type {
   CreateProductAssignmentInput,
   UpdateProductAssignmentInput,
@@ -28,6 +29,61 @@ export async function getProductAssignment(assignmentId: string) {
     .where(eq(productAssignment.assignmentId, assignmentId));
   if (!row) throw new NotFoundError("Product Assignment");
   return row;
+}
+
+/**
+ * Giai đoạn 8 A2: lấy toàn bộ Active Assignment + Product của một Surface trong
+ * một query duy nhất. Thay thế pattern N+1 (useProductAssignments per-position)
+ * trong DisplayPositionShape ở workspace.tsx.
+ */
+export async function listActiveAssignmentsBySurface(
+  surfaceId: string
+): Promise<AssignmentWithProduct[]> {
+  const rows = await db
+    .select({
+      // ProductAssignment fields
+      assignmentId: productAssignment.assignmentId,
+      positionId: productAssignment.positionId,
+      productId: productAssignment.productId,
+      facingQty: productAssignment.facingQty,
+      displayOrder: productAssignment.displayOrder,
+      startDate: productAssignment.startDate,
+      endDate: productAssignment.endDate,
+      status: productAssignment.status,
+      createdAt: productAssignment.createdAt,
+      updatedAt: productAssignment.updatedAt,
+      // Product fields (joined)
+      product: {
+        productId: product.productId,
+        itemCode: product.itemCode,
+        description: product.description,
+        category: product.category,
+        productGroup: product.productGroup,
+        brand: product.brand,
+        imageUrl: product.imageUrl,
+        widthMm: product.widthMm,
+        heightMm: product.heightMm,
+        depthMm: product.depthMm,
+        status: product.status,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+      },
+    })
+    .from(productAssignment)
+    .innerJoin(product, eq(productAssignment.productId, product.productId))
+    .innerJoin(displayPosition, eq(productAssignment.positionId, displayPosition.positionId))
+    .where(
+      and(
+        eq(displayPosition.surfaceId, surfaceId),
+        eq(productAssignment.status, "Active"),
+        eq(displayPosition.status, "Active")
+      )
+    );
+
+  // Drizzle trả Date objects cho timestamp columns, nhưng entities.ts khai báo
+  // createdAt/updatedAt là string (được serialize bởi JSON.stringify khi qua API).
+  // Ở đây cast qua unknown để thoát type mismatch — đúng hành vi runtime.
+  return rows as unknown as AssignmentWithProduct[];
 }
 
 export async function createProductAssignment(input: CreateProductAssignmentInput) {

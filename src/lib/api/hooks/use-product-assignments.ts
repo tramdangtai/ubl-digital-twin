@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { EntityStatus, ProductAssignment } from "@/lib/types/entities";
+import type { AssignmentWithProduct, EntityStatus, ProductAssignment } from "@/lib/types/entities";
 
 import { apiClient } from "../client";
 
@@ -12,6 +12,21 @@ export function useProductAssignments(positionId?: string) {
     queryFn: () =>
       apiClient.get<ProductAssignment[]>(`/api/product-assignments?position_id=${positionId}`),
     enabled: Boolean(positionId),
+  });
+}
+
+/**
+ * Giai đoạn 8 A2: batch fetch toàn bộ Active Assignment + Product của 1 Surface.
+ * Thay thế N+1 (useProductAssignments per-position) trong workspace.tsx.
+ */
+export function useSurfaceAssignments(surfaceId?: string) {
+  return useQuery({
+    queryKey: ["product-assignments", "by-surface", surfaceId],
+    queryFn: () =>
+      apiClient.get<AssignmentWithProduct[]>(
+        `/api/product-assignments?surface_id=${surfaceId}`
+      ),
+    enabled: Boolean(surfaceId),
   });
 }
 
@@ -29,8 +44,11 @@ export function useCreateProductAssignment() {
   return useMutation({
     mutationFn: (input: CreateProductAssignmentBody) =>
       apiClient.post<ProductAssignment>("/api/product-assignments", input),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["product-assignments", data.positionId] });
+    onSuccess: () => {
+      // Quan trọng — Giai đoạn 8 A2: invalidate theo PREFIX ["product-assignments"]
+      // để cả key by-position lẫn key by-surface đều được làm mới.
+      // Không dùng [positionId] cụ thể vì key by-surface sẽ bị bỏ sót.
+      queryClient.invalidateQueries({ queryKey: ["product-assignments"] });
     },
   });
 }
@@ -50,7 +68,10 @@ export function useUpdateProductAssignment(assignmentId: string, positionId: str
     mutationFn: (input: UpdateProductAssignmentBody) =>
       apiClient.patch<ProductAssignment>(`/api/product-assignments/${assignmentId}`, input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["product-assignments", positionId] });
+      // Invalidate PREFIX để cả by-position lẫn by-surface đều tươi.
+      queryClient.invalidateQueries({ queryKey: ["product-assignments"] });
+      // Giữ positionId param (unused) để không phá signature đang có ở inspector.tsx.
+      void positionId;
     },
   });
 }

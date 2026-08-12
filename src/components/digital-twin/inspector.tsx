@@ -27,6 +27,7 @@ import {
   useSyncDirty,
 } from "./inspector-shared";
 import { AssignProductPanel, CreateProductPanel, ProductDetailPanel } from "./product-panels";
+import { ProductThumb } from "./product-thumb";
 import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
 import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
 import { useFixtureDraftStore } from "@/lib/state/fixture-draft";
@@ -1357,11 +1358,16 @@ function AssignmentSection({ position }: { position: DisplayPosition }) {
 
   return (
     <div className="my-3 rounded bg-indigo-50 px-3 py-2">
-      <p className="text-xs font-medium text-indigo-900">
-        Đang trưng bày: {activeProduct?.description ?? "..."}{" "}
-        <span className="text-indigo-600">({activeProduct?.itemCode ?? active.productId})</span>
-      </p>
-      <p className="mt-1 text-xs text-indigo-700">Facing Quantity: {active.facingQty}</p>
+      <div className="flex items-start gap-2">
+        <ProductThumb url={activeProduct?.imageUrl} alt={activeProduct?.description ?? ""} size={40} />
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-indigo-900">
+            Đang trưng bày: {activeProduct?.description ?? "..."}{" "}
+            <span className="text-indigo-600">({activeProduct?.itemCode ?? active.productId})</span>
+          </p>
+          <p className="mt-1 text-xs text-indigo-700">Facing Quantity: {active.facingQty}</p>
+        </div>
+      </div>
       {position.status === "Active" && writable && (
         <button
           disabled={isPending}

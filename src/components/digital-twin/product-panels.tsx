@@ -18,6 +18,7 @@ import {
   UnsavedBadge,
   useSyncDirty,
 } from "./inspector-shared";
+import { ProductThumb } from "./product-thumb";
 
 // ---------------------------------------------------------------------------
 // Create Product
@@ -95,10 +96,17 @@ export function CreateProductPanel({ onCancel }: { onCancel: () => void }) {
         <input className={inputClass} value={brand} onChange={(e) => setBrand(e.target.value)} />
       </label>
 
-      <label className="mb-3 block">
+      <label className="mb-1 block">
         <span className="mb-1 block text-xs font-medium text-muted">Image URL</span>
-        <input className={inputClass} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+        <input className={inputClass} value={imageUrl} onChange={(e) => { setImageUrl(e.target.value); reset(); }} />
+        <FieldErrors error={error} field="imageUrl" />
       </label>
+      {imageUrl.trim() && (
+        <div className="mb-3 flex items-center gap-2">
+          <ProductThumb url={imageUrl.trim()} alt="Preview" size={64} />
+          <span className="text-xs text-muted">Preview ảnh</span>
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-3 gap-2">
         <label className="block">
@@ -267,7 +275,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
         />
       </label>
 
-      <label className="mb-4 block">
+      <label className="mb-1 block">
         <span className="mb-1 block text-xs font-medium text-muted">Image URL</span>
         <input
           className={inputClass}
@@ -275,7 +283,14 @@ export function ProductDetailPanel({ product }: { product: Product }) {
           disabled={product.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, imageUrl: e.target.value }))}
         />
+        <FieldErrors error={error} field="imageUrl" />
       </label>
+      {draft.imageUrl.trim() && (
+        <div className="mb-3 flex items-center gap-2">
+          <ProductThumb url={draft.imageUrl.trim()} alt="Preview" size={64} />
+          <span className="text-xs text-muted">Preview ảnh (theo Draft)</span>
+        </div>
+      )}
 
       <DetailRow
         label="Width × Height × Depth (mm)"
@@ -376,8 +391,12 @@ export function AssignProductPanel({
   return (
     <>
       <h3 className="mb-3 font-semibold text-ubl-secondary">Gán Product vào Display Position</h3>
-      <div className="mb-4 rounded bg-ubl-primary/10 px-3 py-2 text-sm text-ubl-secondary">
-        {product.description} <span className="text-muted">({product.itemCode})</span>
+      <div className="mb-4 flex items-center gap-2 rounded bg-ubl-primary/10 px-3 py-2 text-sm text-ubl-secondary">
+        <ProductThumb url={product.imageUrl} alt={product.description} size={40} />
+        <div className="min-w-0">
+          <p className="truncate font-medium">{product.description}</p>
+          <p className="text-xs text-muted">{product.itemCode}</p>
+        </div>
       </div>
       <GeneralError error={error} />
 

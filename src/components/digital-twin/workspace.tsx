@@ -1,22 +1,37 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
-import { useProductAssignments } from "@/lib/api/hooks/use-product-assignments";
-import { useProduct } from "@/lib/api/hooks/use-products";
+import { useSurfaceAssignments } from "@/lib/api/hooks/use-product-assignments";
+import { useRetailers } from "@/lib/api/hooks/use-retailers";
 import { useStores } from "@/lib/api/hooks/use-stores";
 import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
 import { OWNER_VISUAL } from "@/lib/constants";
+import { buildSurfaceCsv } from "@/lib/export/surface-csv";
+import { buildSurfaceExportBaseName } from "@/lib/export/filename";
+import { downloadBlob } from "@/lib/export/download";
+import { exportSurfacePng } from "@/lib/export/surface-png";
+import type { SurfaceExportContext } from "@/lib/export/types";
 import { fixtureScreenRect, positionScreenRect, pxToMm } from "@/lib/rendering/coordinates";
+import {
+  EMPTY_FILL,
+  EMPTY_STROKE,
+  EMPTY_TEXT,
+  OCCUPIED_FILL,
+  OCCUPIED_STROKE,
+  OCCUPIED_TEXT,
+} from "@/lib/rendering/colors";
+import { useImageStatus } from "@/lib/rendering/use-image-status";
 import type { BulkGenerateDraft } from "@/lib/state/bulk-generate-draft";
 import { useBulkGenerateDraftStore } from "@/lib/state/bulk-generate-draft";
 import { useDisplayPositionDraftStore } from "@/lib/state/display-position-draft";
 import { useFixtureDraftStore } from "@/lib/state/fixture-draft";
 import { useSelectionStore } from "@/lib/state/selection";
+import { useSurfaceViewModeStore, type SurfaceCellMode } from "@/lib/state/surface-view-mode";
 import { useWorkspaceViewStore } from "@/lib/state/workspace-view";
-import type { DisplayPosition, Fixture, Surface } from "@/lib/types/entities";
+import type { AssignmentWithProduct, DisplayPosition, Fixture, Surface } from "@/lib/types/entities";
 
 interface FixtureGeometry {
   positionX: number;
@@ -43,20 +58,40 @@ export function Workspace() {
     selectFixture,
     selectDisplayPosition,
   } = useSelectionStore();
+  const { data: retailers } = useRetailers();
   const { data: stores } = useStores();
   const { data: fixtures } = useFixtures(selectedStoreId ?? undefined);
   const { data: surfaces } = useSurfaces(selectedFixtureId ?? undefined);
   const { data: positions } = useDisplayPositions(selectedSurfaceId ?? undefined);
+
+  // Giai đoạn 8 A2: 1 query thay vì N+1 per-position.
+  const { data: surfaceAssignments } = useSurfaceAssignments(selectedSurfaceId ?? undefined);
+
   const store = stores?.find((s) => s.storeId === selectedStoreId);
+  const fixture = fixtures?.find((f) => f.fixtureId === selectedFixtureId);
   const surface = surfaces?.find((s) => s.surfaceId === selectedSurfaceId);
+  const retailer = retailers?.find((r) => r.retailerId === store?.retailerId);
+
+  // Map<positionId, AssignmentWithProduct> cho O(1) lookup trong DisplayPositionShape.
+  const assignmentMap = new Map<string, AssignmentWithProduct>();
+  if (surfaceAssignments) {
+    for (const a of surfaceAssignments) {
+      assignmentMap.set(a.positionId, a);
+    }
+  }
 
   const { scale, panX, panY, zoomBy, panBy, resetView } = useWorkspaceViewStore();
   const { editingFixtureId, draft: fixtureDraft } = useFixtureDraftStore();
   const { editingPositionId, draft: positionDraft } = useDisplayPositionDraftStore();
   const { draft: bulkDraft } = useBulkGenerateDraftStore();
+  const { cellMode, setCellMode } = useSurfaceViewModeStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isSurfaceView = Boolean(selectedSurfaceId && surface);
+
+  // Export state
+  const [isExportingPng, setIsExportingPng] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
 
   // Đổi context giữa floor-plan (Store) và Surface View là đổi hệ tọa độ hoàn
   // toàn khác nhau (mm khác nhau, gốc khác nhau) — reset zoom/pan để tránh
@@ -102,6 +137,52 @@ export function Workspace() {
       window.removeEventListener("pointerup", onUp);
     };
   }, [panBy]);
+
+  async function handleExportCsv() {
+    if (!surface || !retailer || !store || !fixture || !positions) return;
+    setIsExportingCsv(true);
+    try {
+      const ctx: SurfaceExportContext = {
+        retailer,
+        store,
+        fixture,
+        surface,
+        positions,
+        assignmentByPositionId: assignmentMap,
+      };
+      const csvStr = buildSurfaceCsv(ctx);
+      const bom = "﻿";
+      const blob = new Blob([bom + csvStr], { type: "text/csv;charset=utf-8;" });
+      const baseName = buildSurfaceExportBaseName(ctx);
+      downloadBlob(blob, `${baseName}.csv`);
+    } catch (e) {
+      alert(`Xuất CSV thất bại: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsExportingCsv(false);
+    }
+  }
+
+  async function handleExportPng() {
+    if (!surface || !retailer || !store || !fixture || !positions) return;
+    setIsExportingPng(true);
+    try {
+      const ctx: SurfaceExportContext = {
+        retailer,
+        store,
+        fixture,
+        surface,
+        positions,
+        assignmentByPositionId: assignmentMap,
+      };
+      const blob = await exportSurfacePng(ctx, { cellMode });
+      const baseName = buildSurfaceExportBaseName(ctx);
+      downloadBlob(blob, `${baseName}.png`);
+    } catch (e) {
+      alert(`Xuất PNG thất bại: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsExportingPng(false);
+    }
+  }
 
   if (!store) {
     return (
@@ -152,6 +233,8 @@ export function Workspace() {
               panY={panY}
               selected={selectedDisplayPositionId === p.positionId}
               editing={editing}
+              assignment={assignmentMap.get(p.positionId)}
+              cellMode={cellMode}
               onSelect={() => selectDisplayPosition(surface.surfaceId, p.positionId)}
             />
           );
@@ -162,7 +245,7 @@ export function Workspace() {
     );
     if ((positions?.length ?? 0) === 0 && !bulkDraft) {
       emptyMessage =
-        "Chưa có Display Position. Bấm “+ Add Display Position” hoặc “+ Bulk Generate...” ở Explorer.";
+        'Chưa có Display Position. Bấm "+ Add Display Position" hoặc "+ Bulk Generate..." ở Explorer.';
     }
   } else {
     title = store.storeName;
@@ -204,9 +287,18 @@ export function Workspace() {
       </>
     );
     if ((fixtures?.length ?? 0) === 0) {
-      emptyMessage = "Chưa có Fixture. Bấm “+ Add Fixture” ở Explorer để tạo.";
+      emptyMessage = 'Chưa có Fixture. Bấm "+ Add Fixture" ở Explorer để tạo.';
     }
   }
+
+  const exportReady =
+    isSurfaceView &&
+    surface &&
+    retailer &&
+    store &&
+    fixture &&
+    positions !== undefined &&
+    positions.length > 0;
 
   return (
     <div className="flex h-full flex-1 flex-col bg-background">
@@ -216,6 +308,15 @@ export function Workspace() {
         onZoomIn={() => zoomBy(1.25)}
         onZoomOut={() => zoomBy(0.8)}
         onReset={resetView}
+        // Chỉ truyền props Surface View khi đang ở Surface View
+        isSurfaceView={isSurfaceView}
+        cellMode={cellMode}
+        onCellModeChange={setCellMode}
+        isExportingPng={isExportingPng}
+        isExportingCsv={isExportingCsv}
+        exportReady={!!exportReady}
+        onExportPng={handleExportPng}
+        onExportCsv={handleExportCsv}
       />
       <div ref={containerRef} className="relative flex-1 overflow-hidden">
         <svg
@@ -244,12 +345,28 @@ function WorkspaceHeader({
   onZoomIn,
   onZoomOut,
   onReset,
+  isSurfaceView = false,
+  cellMode,
+  onCellModeChange,
+  isExportingPng = false,
+  isExportingCsv = false,
+  exportReady = false,
+  onExportPng,
+  onExportCsv,
 }: {
   title?: string;
   scale?: number;
   onZoomIn?: () => void;
   onZoomOut?: () => void;
   onReset?: () => void;
+  isSurfaceView?: boolean;
+  cellMode?: SurfaceCellMode;
+  onCellModeChange?: (m: SurfaceCellMode) => void;
+  isExportingPng?: boolean;
+  isExportingCsv?: boolean;
+  exportReady?: boolean;
+  onExportPng?: () => void;
+  onExportCsv?: () => void;
 }) {
   return (
     <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
@@ -257,29 +374,77 @@ function WorkspaceHeader({
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">Workspace</span>
         {title && <span className="ml-2 text-sm font-medium text-ubl-secondary">{title}</span>}
       </div>
-      {scale !== undefined && (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onZoomOut}
-            className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
-          >
-            −
-          </button>
-          <span className="w-12 text-center text-xs text-muted">{Math.round(scale * 100)}%</span>
-          <button
-            onClick={onZoomIn}
-            className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
-          >
-            +
-          </button>
-          <button
-            onClick={onReset}
-            className="ml-1 rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
-          >
-            Reset
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        {/* Nút Chữ / Ảnh — chỉ hiện ở Surface View */}
+        {isSurfaceView && cellMode !== undefined && onCellModeChange && (
+          <div className="flex items-center rounded border border-border text-xs">
+            <button
+              onClick={() => onCellModeChange("text")}
+              className={`px-2 py-0.5 rounded-l ${
+                cellMode === "text"
+                  ? "bg-ubl-primary/10 text-ubl-secondary font-medium"
+                  : "hover:bg-muted-bg"
+              }`}
+            >
+              Chữ
+            </button>
+            <button
+              onClick={() => onCellModeChange("image")}
+              className={`px-2 py-0.5 rounded-r border-l border-border ${
+                cellMode === "image"
+                  ? "bg-ubl-primary/10 text-ubl-secondary font-medium"
+                  : "hover:bg-muted-bg"
+              }`}
+            >
+              Ảnh
+            </button>
+          </div>
+        )}
+
+        {/* Nút Export — chỉ hiện ở Surface View */}
+        {isSurfaceView && (
+          <>
+            <button
+              disabled={!exportReady || isExportingCsv}
+              onClick={onExportCsv}
+              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg disabled:opacity-50"
+            >
+              {isExportingCsv ? "Đang xuất..." : "⬇ CSV"}
+            </button>
+            <button
+              disabled={!exportReady || isExportingPng}
+              onClick={onExportPng}
+              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg disabled:opacity-50"
+            >
+              {isExportingPng ? "Đang xuất..." : "⬇ PNG"}
+            </button>
+          </>
+        )}
+
+        {scale !== undefined && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onZoomOut}
+              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+            >
+              −
+            </button>
+            <span className="w-12 text-center text-xs text-muted">{Math.round(scale * 100)}%</span>
+            <button
+              onClick={onZoomIn}
+              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+            >
+              +
+            </button>
+            <button
+              onClick={onReset}
+              className="ml-1 rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+            >
+              Reset
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -443,6 +608,10 @@ function SurfaceBoundsShape({
   );
 }
 
+/**
+ * Giai đoạn 8 C3: DisplayPositionShape nhận assignment từ Map ở cha (bỏ N+1).
+ * Thêm render ảnh khi cellMode === "image".
+ */
 function DisplayPositionShape({
   position,
   geometry,
@@ -451,6 +620,8 @@ function DisplayPositionShape({
   panY,
   selected,
   editing,
+  assignment,
+  cellMode,
   onSelect,
 }: {
   position: DisplayPosition;
@@ -460,20 +631,19 @@ function DisplayPositionShape({
   panY: number;
   selected: boolean;
   editing: boolean;
+  assignment?: AssignmentWithProduct;
+  cellMode: SurfaceCellMode;
   onSelect: () => void;
 }) {
   const rect = positionScreenRect(geometry, scale, panX, panY);
+  const active = assignment ?? null;
 
-  // Part 07 §16-17: Display Position có Active Assignment → render Product;
-  // trống → render Empty placeholder. Không tự tạo Assignment ở đây, chỉ đọc.
-  const { data: assignments } = useProductAssignments(position.positionId);
-  const active = assignments?.find((a) => a.status === "Active");
-  const { data: activeProduct } = useProduct(active?.productId);
+  // Trạng thái ảnh cho chế độ "Ảnh" — useImageStatus trả "none" khi không có URL.
+  const imageStatus = useImageStatus(
+    cellMode === "image" ? active?.product.imageUrl : null
+  );
 
-  const occupiedFill = "#dcfce7";
-  const occupiedStroke = "#16a34a";
-  const emptyFill = "#eef2ff";
-  const emptyStroke = "#6366f1";
+  const showImage = cellMode === "image" && imageStatus === "ok" && active?.product.imageUrl;
 
   return (
     <g
@@ -488,8 +658,8 @@ function DisplayPositionShape({
         y={rect.y}
         width={rect.width}
         height={rect.height}
-        fill={active ? occupiedFill : emptyFill}
-        stroke={active ? occupiedStroke : emptyStroke}
+        fill={active ? OCCUPIED_FILL : EMPTY_FILL}
+        stroke={active ? OCCUPIED_STROKE : EMPTY_STROKE}
         strokeWidth={selected ? 2.5 : 1.25}
         strokeDasharray={editing ? "6 3" : undefined}
         rx={2}
@@ -507,22 +677,62 @@ function DisplayPositionShape({
           rx={4}
         />
       )}
-      {rect.width > 30 && (
-        <text
-          x={rect.x + 4}
-          y={rect.y + 12}
-          fontSize={9}
-          fill={active ? "#14532d" : "#312e81"}
-          className="select-none"
-        >
-          {active ? activeProduct?.description ?? "..." : position.displayType}
-        </text>
+
+      {/* Chế độ ảnh: hiện hình khi "ok", fallback về chữ khi không có ảnh */}
+      {showImage ? (
+        <>
+          <image
+            href={active!.product.imageUrl!}
+            x={rect.x + 2}
+            y={rect.y + 2}
+            width={rect.width - 4}
+            height={rect.height - 4}
+            preserveAspectRatio="xMidYMid meet"
+          />
+          {/* Dải nền mờ + item_code ở đáy khi ô đủ cao */}
+          {rect.height > 40 && (
+            <>
+              <rect
+                x={rect.x}
+                y={rect.y + rect.height - 18}
+                width={rect.width}
+                height={18}
+                fill="rgba(255,255,255,0.85)"
+              />
+              <text
+                x={rect.x + 4}
+                y={rect.y + rect.height - 6}
+                fontSize={8}
+                fill={OCCUPIED_TEXT}
+                className="select-none"
+              >
+                {active!.product.itemCode}
+              </text>
+            </>
+          )}
+        </>
+      ) : (
+        /* Chế độ chữ (hoặc fallback khi ảnh hỏng/chưa có) */
+        <>
+          {rect.width > 30 && (
+            <text
+              x={rect.x + 4}
+              y={rect.y + 12}
+              fontSize={9}
+              fill={active ? OCCUPIED_TEXT : EMPTY_TEXT}
+              className="select-none"
+            >
+              {active ? active.product.description : position.displayType}
+            </text>
+          )}
+          {active && rect.width > 30 && rect.height > 26 && (
+            <text x={rect.x + 4} y={rect.y + 23} fontSize={8} fill="#166534" className="select-none">
+              {active.product.itemCode}
+            </text>
+          )}
+        </>
       )}
-      {active && rect.width > 30 && rect.height > 26 && (
-        <text x={rect.x + 4} y={rect.y + 23} fontSize={8} fill="#166534" className="select-none">
-          {activeProduct?.itemCode ?? ""}
-        </text>
-      )}
+
       {editing && (
         <text x={rect.x} y={rect.y - 4} fontSize={9} fill="#e85d04" fontWeight={600}>
           Draft
