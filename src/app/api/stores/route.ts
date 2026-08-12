@@ -1,12 +1,14 @@
 import type { NextRequest } from "next/server";
 
 import { apiCreated, apiError, apiSuccess } from "@/lib/api/response";
+import { requireUser, requireWriteAccess } from "@/lib/auth/guard";
 import { createStore, listStores } from "@/lib/services/store.service";
 import { uuidSchema } from "@/lib/validation/common";
 import { createStoreSchema } from "@/lib/validation/store";
 
 export async function GET(request: NextRequest) {
   try {
+    await requireUser();
     const params = request.nextUrl.searchParams;
     const retailerIdRaw = params.get("retailer_id");
     const retailerId = retailerIdRaw ? uuidSchema.parse(retailerIdRaw) : undefined;
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await requireWriteAccess();
     const body = await request.json();
     const input = createStoreSchema.parse(body);
     const data = await createStore(input);

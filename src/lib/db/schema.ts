@@ -17,12 +17,23 @@ import {
   index,
   integer,
   numeric,
+  pgSchema,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
+/**
+ * Tham chiếu tối thiểu tới `auth.users` do Supabase Auth quản lý (schema
+ * `auth`, không phải schema `public` của app) — chỉ khai báo đủ để làm FK
+ * target cho `user_profile`, không migrate/sở hữu bảng này.
+ */
+const authSchema = pgSchema("auth");
+export const authUsers = authSchema.table("users", {
+  id: uuid("id").primaryKey(),
+});
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -257,5 +268,34 @@ export const productAssignment = pgTable(
       sql`${table.startDate} IS NULL OR ${table.endDate} IS NULL OR ${table.startDate} <= ${table.endDate}`
     ),
     check("assignment_status_check", sql`${table.status} IN ('Active', 'Archived')`),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// User Profile — Giai đoạn 6 (Auth & Authorization).
+// ---------------------------------------------------------------------------
+/**
+ * Role model theo CLAUDE.md quyết định #1: Admin/Editor/Viewer.
+ * `userId` = `auth.users.id` (Supabase Auth quản lý mật khẩu/session, app chỉ
+ * lưu role + trạng thái). `onDelete: cascade` ở đây là ngoại lệ so với nguyên
+ * tắc No Hard Delete (Part 01) — vì FK trỏ tới bảng hệ thống của Supabase
+ * Auth (không phải entity nghiệp vụ), xoá user ở Auth là hành động Admin chủ
+ * động hiếm khi làm; profile không có lý do tồn tại khi Auth user đã bị xoá.
+ */
+export const userProfile = pgTable(
+  "user_profile",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    fullName: text("full_name"),
+    role: text("role").notNull().default("Viewer"),
+    status: statusColumn(),
+    ...timestamps,
+  },
+  (table) => [
+    check("user_profile_role_check", sql`${table.role} IN ('Admin', 'Editor', 'Viewer')`),
+    check("user_profile_status_check", sql`${table.status} IN ('Active', 'Archived')`),
   ]
 );

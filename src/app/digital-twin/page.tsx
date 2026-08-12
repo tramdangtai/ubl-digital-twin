@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
+
 import { Explorer } from "@/components/digital-twin/explorer";
 import { Inspector } from "@/components/digital-twin/inspector";
 import { ResizeHandle } from "@/components/digital-twin/resize-handle";
 import { Workspace } from "@/components/digital-twin/workspace";
+import { useCurrentUser, useSignOut } from "@/lib/api/hooks/use-current-user";
 import {
   EXPLORER_COLLAPSED_WIDTH,
   INSPECTOR_COLLAPSED_WIDTH,
@@ -24,12 +27,32 @@ export default function DigitalTwinPage() {
     toggleInspectorCollapsed,
   } = usePanelLayoutStore();
   useBeforeUnloadGuard();
+  const { data: me } = useCurrentUser();
+  const signOut = useSignOut();
 
   return (
     <div className="flex h-screen flex-col">
       <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
         <span className="font-semibold text-ubl-secondary">Digital Twin</span>
         <span className="ml-2 text-xs text-muted">Uncel Bills</span>
+        <div className="ml-auto flex items-center gap-3 text-xs">
+          {me?.role === "Admin" && (
+            <Link href="/users" className="text-ubl-primary hover:underline">
+              Quản lý Người dùng
+            </Link>
+          )}
+          {me && (
+            <span className="text-muted">
+              {me.email} <span className="rounded bg-muted-bg px-1.5 py-0.5">{me.role}</span>
+            </span>
+          )}
+          <button
+            onClick={() => signOut()}
+            className="rounded border border-border px-2 py-1 hover:bg-muted-bg"
+          >
+            Đăng xuất
+          </button>
+        </div>
       </header>
 
       {/* overflow-x-auto: nếu tổng độ rộng panel + min-width Workspace vượt viewport,

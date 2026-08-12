@@ -7,6 +7,8 @@ import { useCreateProduct, useUpdateProduct } from "@/lib/api/hooks/use-products
 import { useSelectionStore } from "@/lib/state/selection";
 import type { Product } from "@/lib/types/entities";
 
+import { canWrite, useCurrentUser } from "@/lib/api/hooks/use-current-user";
+
 import {
   DetailRow,
   FieldErrors,
@@ -166,6 +168,8 @@ export function CreateProductPanel({ onCancel }: { onCancel: () => void }) {
 // Product Detail
 // ---------------------------------------------------------------------------
 export function ProductDetailPanel({ product }: { product: Product }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const [draft, setDraft] = useState({
     itemCode: product.itemCode,
     description: product.description,
@@ -215,7 +219,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
         <input
           className={inputClass}
           value={draft.itemCode}
-          disabled={product.status === "Archived"}
+          disabled={product.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, itemCode: e.target.value }))}
         />
         <FieldErrors error={error} field="itemCode" />
@@ -226,7 +230,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
         <input
           className={inputClass}
           value={draft.description}
-          disabled={product.status === "Archived"}
+          disabled={product.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
         />
         <FieldErrors error={error} field="description" />
@@ -238,7 +242,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
           <input
             className={inputClass}
             value={draft.category}
-            disabled={product.status === "Archived"}
+            disabled={product.status === "Archived" || !writable}
             onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}
           />
         </label>
@@ -247,7 +251,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
           <input
             className={inputClass}
             value={draft.productGroup}
-            disabled={product.status === "Archived"}
+            disabled={product.status === "Archived" || !writable}
             onChange={(e) => setDraft((d) => ({ ...d, productGroup: e.target.value }))}
           />
         </label>
@@ -258,7 +262,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
         <input
           className={inputClass}
           value={draft.brand}
-          disabled={product.status === "Archived"}
+          disabled={product.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, brand: e.target.value }))}
         />
       </label>
@@ -268,7 +272,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
         <input
           className={inputClass}
           value={draft.imageUrl}
-          disabled={product.status === "Archived"}
+          disabled={product.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, imageUrl: e.target.value }))}
         />
       </label>
@@ -282,7 +286,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
         }
       />
 
-      {product.status === "Active" && (
+      {product.status === "Active" && writable && (
         <>
           <div className="mt-3 flex items-center justify-between">
             <div className="flex gap-2">

@@ -1,19 +1,20 @@
 import type { NextRequest } from "next/server";
 
+import { requireAdmin } from "@/lib/auth/guard";
+
 import { apiError, apiSuccess } from "@/lib/api/response";
-import { requireUser, requireWriteAccess } from "@/lib/auth/guard";
-import { getSurface, updateSurface } from "@/lib/services/surface.service";
+import { getUserProfile, updateUser } from "@/lib/services/user.service";
 import { uuidSchema } from "@/lib/validation/common";
-import { updateSurfaceSchema } from "@/lib/validation/surface";
+import { updateUserSchema } from "@/lib/validation/user-profile";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
-    await requireUser();
+    await requireAdmin();
     const { id } = await params;
-    const surfaceId = uuidSchema.parse(id);
-    const data = await getSurface(surfaceId);
+    const userId = uuidSchema.parse(id);
+    const data = await getUserProfile(userId);
     return apiSuccess(data);
   } catch (err) {
     return apiError(err);
@@ -22,13 +23,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    await requireWriteAccess();
+    await requireAdmin();
     const { id } = await params;
-    const surfaceId = uuidSchema.parse(id);
+    const userId = uuidSchema.parse(id);
     const body = await request.json();
-    const input = updateSurfaceSchema.parse(body);
-    const data = await updateSurface(surfaceId, input);
-    return apiSuccess(data, "Surface đã được cập nhật.");
+    const input = updateUserSchema.parse(body);
+    const data = await updateUser(userId, input);
+    return apiSuccess(data, "Đã cập nhật tài khoản.");
   } catch (err) {
     return apiError(err);
   }

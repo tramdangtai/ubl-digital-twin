@@ -1,15 +1,16 @@
 import type { NextRequest } from "next/server";
 
+import { requireAdmin } from "@/lib/auth/guard";
+
 import { apiCreated, apiError, apiSuccess } from "@/lib/api/response";
-import { requireUser, requireWriteAccess } from "@/lib/auth/guard";
-import { createRetailer, listRetailers } from "@/lib/services/retailer.service";
-import { createRetailerSchema } from "@/lib/validation/retailer";
+import { createUser, listUsers } from "@/lib/services/user.service";
+import { createUserSchema } from "@/lib/validation/user-profile";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUser();
+    await requireAdmin();
     const includeArchived = request.nextUrl.searchParams.get("include_archived") === "true";
-    const data = await listRetailers(includeArchived);
+    const data = await listUsers(includeArchived);
     return apiSuccess(data);
   } catch (err) {
     return apiError(err);
@@ -18,11 +19,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireWriteAccess();
+    await requireAdmin();
     const body = await request.json();
-    const input = createRetailerSchema.parse(body);
-    const data = await createRetailer(input);
-    return apiCreated(data, "Retailer đã được tạo.");
+    const input = createUserSchema.parse(body);
+    const data = await createUser(input);
+    return apiCreated(data, "Tài khoản đã được tạo.");
   } catch (err) {
     return apiError(err);
   }

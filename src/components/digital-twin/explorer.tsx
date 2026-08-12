@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { canWrite, useCurrentUser } from "@/lib/api/hooks/use-current-user";
 import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
 import { useProducts } from "@/lib/api/hooks/use-products";
@@ -18,6 +19,8 @@ const rowClass = (active: boolean) =>
 
 export function Explorer({ onCollapse }: { onCollapse: () => void }) {
   const { explorerTab, setExplorerTab, startCreateRetailer, startCreateProduct } = useSelectionStore();
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
 
   return (
     <div className="flex h-full flex-col border-r border-border bg-card">
@@ -30,12 +33,14 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
           ‹
         </button>
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">Explorer</span>
-        <button
-          onClick={explorerTab === "twin" ? startCreateRetailer : startCreateProduct}
-          className="rounded bg-ubl-primary px-2 py-1 text-xs font-medium text-white hover:bg-ubl-primary-dark"
-        >
-          {explorerTab === "twin" ? "+ Retailer" : "+ Product"}
-        </button>
+        {writable && (
+          <button
+            onClick={explorerTab === "twin" ? startCreateRetailer : startCreateProduct}
+            className="rounded bg-ubl-primary px-2 py-1 text-xs font-medium text-white hover:bg-ubl-primary-dark"
+          >
+            {explorerTab === "twin" ? "+ Retailer" : "+ Product"}
+          </button>
+        )}
       </div>
 
       <div className="flex border-b border-border text-xs">
@@ -67,6 +72,8 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
 }
 
 function DigitalTwinTree() {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const { data: retailers, isLoading, error } = useRetailers();
   const { data: stores } = useStores();
   const {
@@ -217,51 +224,61 @@ function DigitalTwinTree() {
                                                   </button>
                                                 );
                                               })}
-                                              <button
-                                                onClick={startCreateDisplayPosition}
-                                                className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
-                                              >
-                                                + Add Display Position
-                                              </button>
-                                              <button
-                                                onClick={startBulkGenerate}
-                                                className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
-                                              >
-                                                + Bulk Generate...
-                                              </button>
+                                              {writable && (
+                                                <>
+                                                  <button
+                                                    onClick={startCreateDisplayPosition}
+                                                    className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                                  >
+                                                    + Add Display Position
+                                                  </button>
+                                                  <button
+                                                    onClick={startBulkGenerate}
+                                                    className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                                  >
+                                                    + Bulk Generate...
+                                                  </button>
+                                                </>
+                                              )}
                                             </div>
                                           )}
                                         </div>
                                       );
                                     })}
-                                    <button
-                                      onClick={() => startCreateSurface(f.fixtureId)}
-                                      className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
-                                    >
-                                      + Add Surface
-                                    </button>
+                                    {writable && (
+                                      <button
+                                        onClick={() => startCreateSurface(f.fixtureId)}
+                                        className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                      >
+                                        + Add Surface
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
                             );
                           })}
-                          <button
-                            onClick={startCreateFixture}
-                            className="w-full rounded px-2 py-1 text-left text-xs text-ubl-primary hover:bg-muted-bg"
-                          >
-                            + Add Fixture
-                          </button>
+                          {writable && (
+                            <button
+                              onClick={startCreateFixture}
+                              className="w-full rounded px-2 py-1 text-left text-xs text-ubl-primary hover:bg-muted-bg"
+                            >
+                              + Add Fixture
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
                   );
                 })}
-                <button
-                  onClick={() => startCreateStore(r.retailerId)}
-                  className="w-full rounded px-2 py-1 text-left text-xs text-ubl-primary hover:bg-muted-bg"
-                >
-                  + Add Store
-                </button>
+                {writable && (
+                  <button
+                    onClick={() => startCreateStore(r.retailerId)}
+                    className="w-full rounded px-2 py-1 text-left text-xs text-ubl-primary hover:bg-muted-bg"
+                  >
+                    + Add Store
+                  </button>
+                )}
               </div>
             )}
           </div>

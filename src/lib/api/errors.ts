@@ -45,6 +45,19 @@ export class ValidationError extends AppError {
   }
 }
 
+/** Giai đoạn 6 — Auth & Authorization. */
+export class UnauthenticatedError extends AppError {
+  constructor(message = "Bạn cần đăng nhập để thực hiện thao tác này.") {
+    super(message, 401, "UNAUTHENTICATED");
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message = "Bạn không có quyền thực hiện thao tác này.") {
+    super(message, 403, "FORBIDDEN");
+  }
+}
+
 /** Postgres SQLSTATE — https://www.postgresql.org/docs/current/errcodes-appendix.html */
 const PG_UNIQUE_VIOLATION = "23505";
 const PG_FOREIGN_KEY_VIOLATION = "23503";

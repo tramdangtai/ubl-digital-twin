@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { canWrite, useCurrentUser } from "@/lib/api/hooks/use-current-user";
 import {
   useBulkGenerateDisplayPositions,
   useCreateDisplayPosition,
@@ -368,6 +369,8 @@ function CreateFixturePanel({ storeId, onCancel }: { storeId: string; onCancel: 
 // Retailer Detail — Draft State pattern (Part 05 §5-6)
 // ---------------------------------------------------------------------------
 function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const [draft, setDraft] = useState({
     retailerCode: retailer.retailerCode,
     retailerName: retailer.retailerName,
@@ -401,7 +404,7 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
         <input
           className={inputClass}
           value={draft.retailerCode}
-          disabled={retailer.status === "Archived"}
+          disabled={retailer.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, retailerCode: e.target.value }))}
         />
         <FieldErrors error={error} field="retailerCode" />
@@ -412,13 +415,13 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
         <input
           className={inputClass}
           value={draft.retailerName}
-          disabled={retailer.status === "Archived"}
+          disabled={retailer.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, retailerName: e.target.value }))}
         />
         <FieldErrors error={error} field="retailerName" />
       </label>
 
-      {retailer.status === "Active" && (
+      {retailer.status === "Active" && writable && (
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             <button
@@ -459,6 +462,8 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
 // Store Detail
 // ---------------------------------------------------------------------------
 function StoreDetailPanel({ store }: { store: Store }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const [draft, setDraft] = useState({
     storeCode: store.storeCode,
     storeName: store.storeName,
@@ -494,7 +499,7 @@ function StoreDetailPanel({ store }: { store: Store }) {
         <input
           className={inputClass}
           value={draft.storeCode}
-          disabled={store.status === "Archived"}
+          disabled={store.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, storeCode: e.target.value }))}
         />
         <FieldErrors error={error} field="storeCode" />
@@ -505,7 +510,7 @@ function StoreDetailPanel({ store }: { store: Store }) {
         <input
           className={inputClass}
           value={draft.storeName}
-          disabled={store.status === "Archived"}
+          disabled={store.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, storeName: e.target.value }))}
         />
         <FieldErrors error={error} field="storeName" />
@@ -516,12 +521,12 @@ function StoreDetailPanel({ store }: { store: Store }) {
         <input
           className={inputClass}
           value={draft.address}
-          disabled={store.status === "Archived"}
+          disabled={store.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
         />
       </label>
 
-      {store.status === "Active" && (
+      {store.status === "Active" && writable && (
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             <button
@@ -567,6 +572,8 @@ function StoreDetailPanel({ store }: { store: Store }) {
 // Draft ưu tiên hơn Persisted khi render, đồng bộ giữa Inspector và canvas).
 // ---------------------------------------------------------------------------
 function FixtureDetailPanel({ fixture, storeId }: { fixture: Fixture; storeId: string }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const { editingFixtureId, draft, startEdit, updateDraft, cancelEdit, clearAfterSave } =
     useFixtureDraftStore();
   const isEditing = editingFixtureId === fixture.fixtureId;
@@ -745,7 +752,7 @@ function FixtureDetailPanel({ fixture, storeId }: { fixture: Fixture; storeId: s
       <DetailRow label="Position (X, Y) (mm)" value={`${fixture.positionX}, ${fixture.positionY}`} />
       <DetailRow label="Rotation" value={`${fixture.rotationDegree}°`} />
 
-      {fixture.status === "Active" && (
+      {fixture.status === "Active" && writable && (
         <div className="mt-4 flex items-center justify-between">
           <button
             onClick={() =>
@@ -895,6 +902,8 @@ function CreateSurfacePanel({ fixtureId, onCancel }: { fixtureId: string; onCanc
 // Surface Detail
 // ---------------------------------------------------------------------------
 function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureId: string }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const [draft, setDraft] = useState({
     surfaceName: surface.surfaceName ?? "",
     widthMm: surface.widthMm,
@@ -938,7 +947,7 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
         <input
           className={inputClass}
           value={draft.surfaceName}
-          disabled={surface.status === "Archived"}
+          disabled={surface.status === "Archived" || !writable}
           onChange={(e) => setDraft((d) => ({ ...d, surfaceName: e.target.value }))}
         />
       </label>
@@ -960,7 +969,7 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
         />
       </div>
 
-      {surface.status === "Active" && (
+      {surface.status === "Active" && writable && (
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             <button
@@ -1160,6 +1169,8 @@ function DisplayPositionDetailPanel({
   position: DisplayPosition;
   surfaceId: string;
 }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const { editingPositionId, draft, startEdit, updateDraft, cancelEdit, clearAfterSave } =
     useDisplayPositionDraftStore();
   const isEditing = editingPositionId === position.positionId;
@@ -1285,7 +1296,7 @@ function DisplayPositionDetailPanel({
 
       <AssignmentSection position={position} />
 
-      {position.status === "Active" && (
+      {position.status === "Active" && writable && (
         <div className="mt-4 flex items-center justify-between">
           <button
             onClick={() =>
@@ -1325,6 +1336,8 @@ function DisplayPositionDetailPanel({
  * Part 02 §3.5: Display Position có tối đa 1 Active Assignment.
  */
 function AssignmentSection({ position }: { position: DisplayPosition }) {
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
   const { data: assignments } = useProductAssignments(position.positionId);
   const active = assignments?.find((a) => a.status === "Active");
   const { data: activeProduct } = useProduct(active?.productId);
@@ -1349,7 +1362,7 @@ function AssignmentSection({ position }: { position: DisplayPosition }) {
         <span className="text-indigo-600">({activeProduct?.itemCode ?? active.productId})</span>
       </p>
       <p className="mt-1 text-xs text-indigo-700">Facing Quantity: {active.facingQty}</p>
-      {position.status === "Active" && (
+      {position.status === "Active" && writable && (
         <button
           disabled={isPending}
           onClick={() => {

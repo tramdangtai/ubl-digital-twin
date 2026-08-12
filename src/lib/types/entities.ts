@@ -124,3 +124,16 @@ export interface ProductAssignment {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Giai đoạn 6 — Auth & Authorization (CLAUDE.md quyết định #1). */
+export type UserRole = "Admin" | "Editor" | "Viewer";
+
+export interface UserProfile {
+  userId: string;
+  email: string;
+  fullName: string | null;
+  role: UserRole;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -54,7 +54,9 @@ $entry = $zip.Entries | Where-Object { $_.FullName -eq 'word/document.xml' }
   Browser **không bao giờ** gọi Supabase trực tiếp cho mutation nghiệp vụ (đúng nguyên tắc Part 06 §2,
   chỉ khác là "Backend" giờ nằm trong cùng Next.js app thay vì FastAPI riêng).
 - Database: Supabase Postgres (giữ nguyên theo spec).
-- Auth: **CHƯA làm ở Phase 1** (xem quyết định #1 bên dưới).
+- Auth: **Supabase Auth, đã làm ở Giai đoạn 6** (xem quyết định #1 bên dưới). Middleware
+  (`src/middleware.ts`) chặn request chưa đăng nhập ở edge; role Admin/Editor/Viewer check trong từng
+  Route Handler qua `src/lib/auth/guard.ts`.
 - UI: Tailwind + shadcn/ui (đã cấu hình `components.json`, style "new-york"; chưa cài component cụ thể
   nào — Giai đoạn 1 dùng Tailwind thuần).
 - **Data layer: Drizzle ORM + `postgres` (postgres.js driver) — đã khóa, không còn "đề xuất".**
@@ -99,9 +101,15 @@ Chi tiết đầy đủ nằm trong Part 01–08 — đọc khi cần, nhưng 8 
 Đây là câu trả lời chính thức cho các "Pending Decision" mà TD-05 §120, TD-06 §132, TD-07 §103-110 tự
 đánh dấu chưa dám tự quyết. Coi đây là spec, không phải gợi ý.
 
-1. **Auth Phase 1: KHÔNG có đăng nhập.** Bổ sung Supabase Auth sau khi luồng CRUD cốt lõi chạy ổn.
-   Khi bổ sung: role model = **Admin / Editor / Viewer** (không dùng "department = marketing" như
-   TD-07 draft). Permission Matrix cụ thể (ai làm gì) sẽ chốt lại lúc implement auth, không phải bây giờ.
+1. **Auth: đã implement ở Giai đoạn 6 (2026-08-12).** Supabase Auth (email + password, không self-signup
+   công khai — Admin tạo tài khoản trong app). Role model **Admin / Editor / Viewer**, Permission Matrix
+   cụ thể đã chốt:
+   - **Viewer**: chỉ xem (GET) toàn bộ Digital Twin + Product Library, không tạo/sửa/archive/gán/bulk-
+     generate được gì, không truy cập trang Quản lý Người dùng.
+   - **Editor**: full CRUD + archive + assign trên Digital Twin và Product Library (như Viewer + ghi),
+     không quản lý user khác.
+   - **Admin**: như Editor + tạo/khoá/mở khoá tài khoản, đổi role người khác (trang `/users`).
+   Chi tiết implement xem mục "Trạng thái hiện tại của repo" phần Giai đoạn 6 bên dưới.
 2. **Display Position**: một tầng kệ (Surface) chứa **nhiều** Display Position (mỗi facing/slot riêng),
    đúng theo Part 02/03 gốc — không gộp thành 1 record/tầng. Hệ quả: khối lượng nhập liệu 1 store thật
    sự lớn (~400-4000 Display Position/store) → **Phase 1 phải có công cụ sinh hàng loạt** (xem mục
@@ -189,7 +197,7 @@ Phase 1 phải kéo sớm một phần nhỏ của Part 09 §4 (vốn ghi là Ph
 Không kéo thêm gì khác từ Phase 2 (Snap/Alignment/Multi-select/Version History/Undo-Redo vẫn để
 Phase 2 đúng như spec).
 
-## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 5, 2026-08-12)
+## Trạng thái hiện tại của repo (cập nhật sau Giai đoạn 6, 2026-08-12)
 
 **Git/GitHub:**
 - Repo đã push lên GitHub thành công: `https://github.com/tramdangtai/ubl-digital-twin`, branch `main`.
@@ -364,11 +372,53 @@ có thật trong Supabase. **Bài học: trước khi test app, luôn chạy `np
   đổi... Vui lòng tải lại và thử lại.").
 - `npx tsc --noEmit`, `npm run lint`, `npm run build` đều sạch.
 
+**Giai đoạn 6 (Auth & Authorization) đã xong:**
+- **DB**: bảng `user_profile` mới (`src/lib/db/schema.ts`) — `userId` tham chiếu `auth.users.id` (Supabase
+  Auth quản lý, khai báo tối thiểu qua `pgSchema("auth")` chỉ để làm FK target, KHÔNG migrate/sở hữu bảng
+  đó), `role` (Admin/Editor/Viewer), `status` (Active/Archived). Migration `drizzle/0004_*.sql` —
+  **lưu ý khi đọc file này**: `drizzle-kit generate` tự sinh thêm `CREATE TABLE "auth"."users"` (vì lần
+  đầu khai báo bảng đó trong schema.ts) — đã xoá thủ công dòng đó khỏi migration trước khi apply, vì bảng
+  thật đã tồn tại sẵn do Supabase quản lý. Nhớ áp dụng lại thao tác này nếu sau này generate migration
+  mới có đụng tới bảng `auth.users`.
+- **Session/Guard**: `src/lib/auth/session.ts` (`getCurrentUser()` — đọc Supabase session server-side rồi
+  tra `user_profile` lấy role; trả `null` nếu chưa có profile hoặc profile Archived — tài khoản Supabase
+  Auth tồn tại không đồng nghĩa được dùng app), `src/lib/auth/guard.ts` (`requireUser`/
+  `requireWriteAccess`/`requireAdmin`, ném `AppError` 401/403 — tái dùng `apiError()` có sẵn từ Giai đoạn
+  1, không cần sửa response layer).
+- **Middleware** (`src/middleware.ts`): lớp authentication (có đăng nhập hay không) — chặn ở edge, redirect
+  page chưa đăng nhập về `/login?next=<path>`, trả 401 JSON cho API. Lớp authorization (role làm được gì)
+  nằm ở `guard.ts` trong từng Route Handler vì middleware không biết action cụ thể của route.
+- **User management**: `src/lib/services/user.service.ts` (tạo user qua Supabase Admin API
+  `auth.admin.createUser` với mật khẩu Admin tự đặt — KHÔNG dùng invite-by-email vì không phụ thuộc cấu
+  hình SMTP của Supabase project, phù hợp quy mô 2-5 user; Archive user vừa set `status` vừa
+  `auth.admin.updateUserById(id, { ban_duration })` để khoá đăng nhập thật ở tầng Supabase Auth, không chỉ
+  chặn ở app layer). API: `/api/users`, `/api/users/[id]`, `/api/me`. Trang UI: `/users` (Admin only, tạo
+  user mới + đổi role + khoá/mở khoá).
+- **Guard 15 route.ts nghiệp vụ có sẵn**: mọi GET gọi `requireUser()`, mọi POST/PATCH gọi
+  `requireWriteAccess()` (Viewer bị chặn 403). Optimistic concurrency (Giai đoạn 5) tái dùng nguyên vẹn,
+  không đổi.
+- **Frontend**: `use-current-user.ts` (`useCurrentUser()` hook + `canWrite(role)` helper), header
+  `digital-twin/page.tsx` hiện email/role + nút Đăng xuất + link "Quản lý Người dùng" (chỉ Admin thấy).
+  Toàn bộ nút tạo/sửa/archive/unassign trong Explorer + Inspector + Product panels đều gate thêm
+  `writable` (Admin/Editor) — Viewer thấy dữ liệu nhưng input field bị `disabled`, không có nút Save/
+  Archive/"+"; đây là UX-only, **backend luôn tự validate lại** (đã verify bằng fetch() trực tiếp bypass
+  UI, POST vẫn bị 403 dù không hiện nút).
+- **Seed Admin đầu tiên**: `scripts/seed-admin.ts` (`npx tsx scripts/seed-admin.ts <email> [password]`) —
+  chỉ cần chạy 1 lần lúc mới bổ sung Auth (chicken-and-egg: chưa có Admin thì không tự tạo Admin qua UI
+  được). Đã tạo Admin cho Tài (`tramdangtai.work@gmail.com`).
+- Đã test đầy đủ qua browser thật: chưa đăng nhập → redirect `/login` đúng; đăng nhập Admin → header đúng
+  email/role, thấy "+ Retailer" và "Quản lý Người dùng"; tạo user Editor + Viewer test qua trang `/users`
+  → thành công; đăng nhập Viewer → không thấy nút tạo/sửa/archive, input field bị disabled, `fetch()`
+  POST trực tiếp bypass UI vẫn bị `403 FORBIDDEN` đúng message; `tsc`/`lint`/`build` sạch (middleware
+  build ra bundle riêng 92.7 kB, đúng kỳ vọng Next.js Edge Runtime).
+- 2 tài khoản test còn giữ trong Supabase để Tài tiện thử tay: `editor.test@ubl.local` / `TestPass123`
+  (role Editor) và `viewer.test@ubl.local` / `TestPass123` (role Viewer) — xoá hoặc khoá qua trang `/users`
+  nếu không cần nữa.
+
 ### Milestone tiếp theo
 
-**Giai đoạn 6 — Auth & Authorization**: Supabase Auth, role model Admin/Editor/Viewer (quyết định #1),
-Permission Matrix cụ thể chốt lúc implement. **Giai đoạn 7 — Testing & Deploy**: thêm test runner
-(Vitest/Playwright), CI, deploy production. Xem bảng 7 giai đoạn đầy đủ trong lịch sử chat.
+**Giai đoạn 7 — Testing & Deploy**: thêm test runner (Vitest/Playwright), CI, deploy production
+(Vercel). Xem bảng 7 giai đoạn đầy đủ trong lịch sử chat.
 
 ## Commands
 
@@ -380,6 +430,7 @@ npm run start
 npm run lint
 npm run db:generate  # sửa src/lib/db/schema.ts xong thì chạy cái này để sinh migration SQL mới
 npm run db:migrate   # apply migration (drizzle/*.sql) lên DB trỏ bởi DATABASE_URL trong .env.local
+npx tsx scripts/seed-admin.ts <email> [password]  # tạo Admin đầu tiên (chỉ cần 1 lần/môi trường)
 ```
 
 Chưa có test runner được cấu hình (TD-02 đề xuất Vitest + Playwright — sẽ thêm khi có code cần test,

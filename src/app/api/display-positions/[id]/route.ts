@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { apiError, apiSuccess } from "@/lib/api/response";
+import { requireUser, requireWriteAccess } from "@/lib/auth/guard";
 import {
   getDisplayPosition,
   updateDisplayPosition,
@@ -12,6 +13,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
+    await requireUser();
     const { id } = await params;
     const positionId = uuidSchema.parse(id);
     const data = await getDisplayPosition(positionId);
@@ -23,6 +25,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
+    await requireWriteAccess();
     const { id } = await params;
     const positionId = uuidSchema.parse(id);
     const body = await request.json();

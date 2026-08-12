@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { apiCreated, apiError, apiSuccess } from "@/lib/api/response";
+import { requireUser, requireWriteAccess } from "@/lib/auth/guard";
 import {
   createProductAssignment,
   listProductAssignments,
@@ -10,6 +11,7 @@ import { createProductAssignmentSchema } from "@/lib/validation/product-assignme
 
 export async function GET(request: NextRequest) {
   try {
+    await requireUser();
     const params = request.nextUrl.searchParams;
     const positionId = uuidSchema.parse(params.get("position_id"));
     const includeArchived = params.get("include_archived") === "true";
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await requireWriteAccess();
     const body = await request.json();
     const input = createProductAssignmentSchema.parse(body);
     const data = await createProductAssignment(input);
