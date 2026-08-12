@@ -415,10 +415,58 @@ có thật trong Supabase. **Bài học: trước khi test app, luôn chạy `np
   (role Editor) và `viewer.test@ubl.local` / `TestPass123` (role Viewer) — xoá hoặc khoá qua trang `/users`
   nếu không cần nữa.
 
+**Giai đoạn 8 (Product Image + Export Surface PNG & CSV) đã xong:**
+- **Product image**: thêm field `image_url` vào Product create/update form (URL), `ProductThumb`
+  component (`src/components/digital-twin/product-thumb.tsx`) — 3 trạng thái: ok/loading/error, dùng
+  `useImageStatus` hook (module-level cache tab lifetime). Hiển thị ảnh trong Explorer tree, Inspector
+  create/detail panel, AssignProduct chip, AssignmentSection.
+- **N+1 elimination**: `useSurfaceAssignments(surfaceId)` thay thế per-position fetch — 1 query trả
+  toàn bộ assignment+product của cả Surface. TanStack Query prefix invalidation `["product-assignments"]`
+  đảm bảo key `by-surface` refresh khi mutation xảy ra.
+- **Toggle chữ/ảnh**: `useSurfaceViewModeStore` (Zustand + persist, key `"ubl-surface-view-mode"`) —
+  nút "Chữ | Ảnh" trong WorkspaceHeader; lưu `localStorage` theo Decision D2.
+- **Export CSV**: `src/lib/export/surface-csv.ts` — BOM `﻿` + CRLF, 30 cột, sort y rồi x.
+  `src/lib/export/filename.ts` — slugify NFD + strip diacritics → tên file `RET-001_ST-G2_...`.
+  `src/lib/export/download.ts` — createObjectURL + `<a download>` + setTimeout revokeObjectURL.
+- **Export PNG**: `src/lib/export/surface-png.ts` — B1 fetch ảnh URL→data:URI (CORS-safe, 8s timeout,
+  allSettled); B2 SVG string (positionScreenRect, header dải tiêu đề, nền trắng); B3 SVG→canvas; B4
+  canvas.toBlob(). Nút "⬇ PNG" + "⬇ CSV" trong WorkspaceHeader, chỉ hiện khi ở Surface View.
+- `src/lib/rendering/colors.ts` — OCCUPIED/EMPTY fill/stroke/text constants dùng chung workspace + PNG.
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` đều sạch — commit `cab6b94`.
+
+**Giai đoạn 9 (Background Image cho Surface) đã xong:**
+- **DB**: bảng `background_image` mới + 3 cột vào `surface` (`background_image_id`, `background_opacity`,
+  `background_fit`). Migration `drizzle/0005_bumpy_virginia_dare.sql` — đã apply thật lên Supabase.
+  `uploadedBy` FK trỏ `user_profile.user_id` (không trỏ `auth.users.id` để tránh drizzle-kit sinh
+  `CREATE TABLE "auth"."users"` — CLAUDE.md Giai đoạn 6).
+- **Storage**: bucket private `surface-backgrounds` — `scripts/setup-storage.ts` idempotent. Tất cả
+  truy cập qua proxy `/api/background-images/[id]/file` (kiểm đăng nhập).
+- **Service**: `src/lib/services/background-image.service.ts` — upload→Storage→insert DB (compensating
+  cleanup nếu insert fail), `assertNotStale()`, download proxy. `surface.service.ts` mở rộng: validate
+  backgroundImageId phải Active khi set.
+- **API**: `GET/POST /api/background-images` (GET `requireUser`, POST `requireAdmin` + magic bytes
+  check); `PATCH /api/background-images/[id]` (cảnh báo số Surface đang dùng khi Archive, không chặn);
+  `GET /api/background-images/[id]/file` (proxy, `Cache-Control: private, max-age=3600, immutable`).
+- **Client**: `apiClient.postForm()` — fetch trực tiếp không override Content-Type, để browser tự set
+  `multipart/form-data; boundary=...`. `src/lib/images/resize.ts` — `createImageBitmap`+canvas resize
+  nếu cạnh dài > 2560px, xuất JPEG q=0.85.
+- **Hooks**: `src/lib/api/hooks/use-background-images.ts` — `useBackgroundImages`, `useUploadBackgroundImage`,
+  `useUpdateBackgroundImage`, `backgroundImageUrl()` helper.
+- **Trang /backgrounds**: `src/app/backgrounds/page.tsx` — Admin only, upload form (preview + resize
+  tự động), grid ảnh (hiện size, kích thước, Archive/Restore). Link "Ảnh nền" trong header Admin.
+- **Inspector**: `SurfaceDetailPanel` mở rộng 6 field draft (thêm backgroundImageId, backgroundOpacity,
+  backgroundFit), checkbox "Hiện ảnh nền", image picker grid 3 cột, opacity slider, fit select.
+  `isDirty` check đủ 6 field, Cancel reset đủ 6 field.
+- **Workspace**: `SurfaceBackgroundImage` component — `useId()` cho clipPath, `preserveAspectRatio`
+  theo `backgroundFit` (contain/cover/stretch), `pointerEvents="none"`, đặt trước Display Positions.
+- **PNG export**: `surface-png.ts` mở rộng — fetch background image as data:URI (same-origin, không
+  CORS issue), render `<image>` + `<clipPath>` trong SVG trước Display Positions.
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` đều sạch.
+
 ### Milestone tiếp theo
 
-**Giai đoạn 7 — Testing & Deploy**: thêm test runner (Vitest/Playwright), CI, deploy production
-(Vercel). Xem bảng 7 giai đoạn đầy đủ trong lịch sử chat.
+**Giai đoạn 10 — Testing & Deploy**: thêm test runner (Vitest/Playwright), CI, deploy production
+(Vercel). Xem bảng giai đoạn đầy đủ trong lịch sử chat.
 
 ## Commands
 

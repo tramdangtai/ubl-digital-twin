@@ -78,6 +78,7 @@ function buildSurfaceSvgString(
   ctx: SurfaceExportContext,
   opts: {
     dataUris: Map<string, string>;
+    bgDataUri: string | null;
     cellMode: SurfaceCellMode;
     scale: number;
     padding: number;
@@ -85,7 +86,7 @@ function buildSurfaceSvgString(
   }
 ): { svg: string; totalWidth: number; totalHeight: number } {
   const { retailer, store, fixture, surface, positions, assignmentByPositionId } = ctx;
-  const { dataUris, cellMode, scale, padding, headerH } = opts;
+  const { dataUris, bgDataUri, cellMode, scale, padding, headerH } = opts;
 
   const surfaceW = Math.round(surface.widthMm * scale);
   const surfaceH = Math.round(surface.heightMm * scale);
@@ -147,6 +148,25 @@ function buildSurfaceSvgString(
     return baseShape + content;
   });
 
+  // Ảnh nền — fit theo backgroundFit (contain / cover / stretch).
+  const bgPreserve =
+    surface.backgroundFit === "cover"
+      ? "xMidYMid slice"
+      : surface.backgroundFit === "stretch"
+      ? "none"
+      : "xMidYMid meet";
+
+  const bgSvg = bgDataUri
+    ? `<defs>
+    <clipPath id="bg-clip">
+      <rect x="${panX}" y="${panY}" width="${surfaceW}" height="${surfaceH}"/>
+    </clipPath>
+  </defs>
+  <image href="${bgDataUri}" x="${panX}" y="${panY}" width="${surfaceW}" height="${surfaceH}"
+    opacity="${surface.backgroundOpacity}" preserveAspectRatio="${bgPreserve}"
+    clip-path="url(#bg-clip)"/>`
+    : "";
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"
     width="${totalWidth}" height="${totalHeight}"
     font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
@@ -161,6 +181,9 @@ function buildSurfaceSvgString(
 
   <!-- Viền Surface -->
   <rect x="${panX}" y="${panY}" width="${surfaceW}" height="${surfaceH}" fill="#ffffff" stroke="#1a365d" stroke-width="2"/>
+
+  <!-- Ảnh nền (nếu có) -->
+  ${bgSvg}
 
   <!-- Display Positions -->
   ${positionShapes.join("\n  ")}
@@ -225,7 +248,7 @@ export async function exportSurfacePng(
   const longestSide = Math.max(ctx.surface.widthMm, ctx.surface.heightMm);
   const scale = Math.min(MAX_PX / longestSide, MAX_PX / longestSide) * 2;
 
-  // B1: chuẩn bị data URI (chỉ khi cellMode = "image").
+  // B1a: chuẩn bị data URI cho ảnh sản phẩm (chỉ khi cellMode = "image").
   let dataUris = new Map<string, string>();
   if (cellMode === "image") {
     const urls: string[] = [];
@@ -236,9 +259,18 @@ export async function exportSurfacePng(
     dataUris = await fetchDataUris(urls);
   }
 
+  // B1b: chuẩn bị data URI cho ảnh nền (same-origin proxy, không cần CORS header đặc biệt).
+  let bgDataUri: string | null = null;
+  if (ctx.surface.backgroundImageId) {
+    const bgUrl = `/api/background-images/${ctx.surface.backgroundImageId}/file`;
+    const bgMap = await fetchDataUris([bgUrl]);
+    bgDataUri = bgMap.get(bgUrl) ?? null;
+  }
+
   // B2: dựng SVG.
   const { svg, totalWidth, totalHeight } = buildSurfaceSvgString(ctx, {
     dataUris,
+    bgDataUri,
     cellMode,
     scale,
     padding: PADDING,

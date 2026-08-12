@@ -55,4 +55,18 @@ export const apiClient = {
     request<T>(path, { method: "POST", body: JSON.stringify(data) }),
   patch: <T>(path: string, data: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(data) }),
+  /**
+   * Giai đoạn 9 — upload file qua FormData.
+   * KHÔNG set Content-Type header thủ công — browser phải tự set
+   * "multipart/form-data; boundary=..." khi body là FormData.
+   */
+  postForm: async <T>(path: string, form: FormData): Promise<T> => {
+    // fetch trực tiếp (không qua requestEnvelope) để tránh override Content-Type.
+    const res = await fetch(path, { method: "POST", body: form });
+    const body = (await res.json()) as ApiEnvelope<T>;
+    if (!body.success) {
+      throw new ApiRequestError(body.message, res.status, body.errors);
+    }
+    return body.data;
+  },
 };

@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { AppError, NotFoundError } from "../api/errors";
 import { db } from "../db/client";
-import { fixture, surface } from "../db/schema";
+import { backgroundImage, fixture, surface } from "../db/schema";
 import type { CreateSurfaceInput, UpdateSurfaceInput } from "../validation/surface";
 import { archiveSurfaceSubtree } from "./cascade";
 import { assertNotStale } from "./concurrency";
@@ -53,6 +53,18 @@ export async function updateSurface(surfaceId: string, input: UpdateSurfaceInput
   const existing = await getSurface(surfaceId);
   const { expectedUpdatedAt, ...fields } = input;
   assertNotStale(expectedUpdatedAt, existing.updatedAt);
+
+  // Giai đoạn 9: nếu gán backgroundImageId, kiểm tra ảnh phải Active.
+  if (fields.backgroundImageId !== undefined && fields.backgroundImageId !== null) {
+    const [img] = await db
+      .select({ status: backgroundImage.status })
+      .from(backgroundImage)
+      .where(eq(backgroundImage.backgroundImageId, fields.backgroundImageId));
+    if (!img) throw new NotFoundError("Background Image");
+    if (img.status !== "Active") {
+      throw new AppError("Background Image đã Archived, không thể gán.", 422, "PARENT_NOT_ACTIVE");
+    }
+  }
 
   if (fields.status === "Archived") {
     return db.transaction(async (tx) => {

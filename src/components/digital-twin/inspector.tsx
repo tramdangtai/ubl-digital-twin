@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 
 import { canWrite, useCurrentUser } from "@/lib/api/hooks/use-current-user";
 import {
+  backgroundImageUrl,
+  useBackgroundImages,
+} from "@/lib/api/hooks/use-background-images";
+import {
   useBulkGenerateDisplayPositions,
   useCreateDisplayPosition,
   useDisplayPositions,
@@ -15,6 +19,7 @@ import { useProduct } from "@/lib/api/hooks/use-products";
 import { useCreateRetailer, useRetailers, useUpdateRetailer } from "@/lib/api/hooks/use-retailers";
 import { useCreateStore, useStores, useUpdateStore } from "@/lib/api/hooks/use-stores";
 import { useCreateSurface, useSurfaces, useUpdateSurface } from "@/lib/api/hooks/use-surfaces";
+import { BACKGROUND_FITS } from "@/lib/validation/background-image";
 import { DISPLAY_TYPES, OWNER_COMPANIES, SURFACE_ORIENTATIONS } from "@/lib/constants";
 import {
   DetailRow,
@@ -909,26 +914,47 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
     surfaceName: surface.surfaceName ?? "",
     widthMm: surface.widthMm,
     heightMm: surface.heightMm,
+    // Giai đoạn 9 — ảnh nền.
+    backgroundImageId: surface.backgroundImageId,
+    backgroundOpacity: surface.backgroundOpacity,
+    backgroundFit: surface.backgroundFit,
   });
   const { mutate, isPending, error, reset } = useUpdateSurface(surface.surfaceId, fixtureId);
+  const { data: bgImages } = useBackgroundImages(false);
 
   useEffect(() => {
     setDraft({
       surfaceName: surface.surfaceName ?? "",
       widthMm: surface.widthMm,
       heightMm: surface.heightMm,
+      backgroundImageId: surface.backgroundImageId,
+      backgroundOpacity: surface.backgroundOpacity,
+      backgroundFit: surface.backgroundFit,
     });
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surface.surfaceId, surface.surfaceName, surface.widthMm, surface.heightMm]);
+  }, [
+    surface.surfaceId,
+    surface.surfaceName,
+    surface.widthMm,
+    surface.heightMm,
+    surface.backgroundImageId,
+    surface.backgroundOpacity,
+    surface.backgroundFit,
+  ]);
 
   const isDirty =
     draft.surfaceName !== (surface.surfaceName ?? "") ||
     draft.widthMm !== surface.widthMm ||
-    draft.heightMm !== surface.heightMm;
+    draft.heightMm !== surface.heightMm ||
+    draft.backgroundImageId !== surface.backgroundImageId ||
+    draft.backgroundOpacity !== surface.backgroundOpacity ||
+    draft.backgroundFit !== surface.backgroundFit;
   const hasInvalidNumbers =
     !Number.isFinite(draft.widthMm) || draft.widthMm <= 0 || !Number.isFinite(draft.heightMm) || draft.heightMm <= 0;
   useSyncDirty(isDirty);
+
+  const hasBgImage = draft.backgroundImageId !== null;
 
   return (
     <>
@@ -970,6 +996,109 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
         />
       </div>
 
+      {/* Giai đoạn 9 — ảnh nền */}
+      <div className="mb-4 border-t border-border/50 pt-3">
+        <div className="mb-2 flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted">
+            <input
+              type="checkbox"
+              checked={hasBgImage}
+              disabled={surface.status === "Archived" || !writable}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  backgroundImageId: e.target.checked
+                    ? (bgImages?.[0]?.backgroundImageId ?? null)
+                    : null,
+                }))
+              }
+            />
+            Hiện ảnh nền
+          </label>
+        </div>
+
+        {hasBgImage && (
+          <>
+            {/* Image picker grid */}
+            {bgImages && bgImages.length > 0 ? (
+              <div className="mb-2 grid grid-cols-3 gap-1 overflow-y-auto" style={{ maxHeight: 200 }}>
+                {bgImages.map((img) => (
+                  <button
+                    key={img.backgroundImageId}
+                    disabled={surface.status === "Archived" || !writable}
+                    onClick={() =>
+                      setDraft((d) => ({ ...d, backgroundImageId: img.backgroundImageId }))
+                    }
+                    title={img.label}
+                    className={`rounded border p-0.5 ${
+                      draft.backgroundImageId === img.backgroundImageId
+                        ? "border-ubl-primary"
+                        : "border-border hover:border-ubl-primary/50"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={backgroundImageUrl(img.backgroundImageId)}
+                      alt={img.label}
+                      className="h-14 w-full rounded object-contain bg-muted-bg"
+                    />
+                    <p className="mt-0.5 truncate text-center text-[10px] text-muted">{img.label}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mb-2 text-xs text-muted">
+                Chưa có ảnh nền.{" "}
+                <a href="/backgrounds" target="_blank" className="text-ubl-primary underline">
+                  Upload ảnh nền →
+                </a>
+              </p>
+            )}
+
+            {/* Opacity slider */}
+            <label className="mb-2 block">
+              <span className="mb-1 block text-xs font-medium text-muted">
+                Độ trong suốt: {Math.round(draft.backgroundOpacity * 100)}%
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={draft.backgroundOpacity}
+                disabled={surface.status === "Archived" || !writable}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, backgroundOpacity: parseFloat(e.target.value) }))
+                }
+                className="w-full"
+              />
+            </label>
+
+            {/* Fit select */}
+            <label className="mb-2 block">
+              <span className="mb-1 block text-xs font-medium text-muted">Kiểu fit</span>
+              <select
+                className={inputClass}
+                value={draft.backgroundFit}
+                disabled={surface.status === "Archived" || !writable}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    backgroundFit: e.target.value as typeof draft.backgroundFit,
+                  }))
+                }
+              >
+                {BACKGROUND_FITS.map((f) => (
+                  <option key={f} value={f}>
+                    {f === "contain" ? "Contain (giữ tỉ lệ, không cắt)" : f === "cover" ? "Cover (phủ kín, cắt nếu cần)" : "Stretch (kéo dãn vừa khung)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+      </div>
+
       {surface.status === "Active" && writable && (
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
@@ -987,6 +1116,9 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
                     surfaceName: surface.surfaceName ?? "",
                     widthMm: surface.widthMm,
                     heightMm: surface.heightMm,
+                    backgroundImageId: surface.backgroundImageId,
+                    backgroundOpacity: surface.backgroundOpacity,
+                    backgroundFit: surface.backgroundFit,
                   })
                 }
                 className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted-bg"

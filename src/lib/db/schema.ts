@@ -9,6 +9,9 @@
  *   - display_position.capacity >= 0 (nullable), facing_limit >= 1 (nullable).
  *   - Không dùng ON DELETE CASCADE (TD-05 §13) — Phase 1 chỉ Soft Delete, cascade
  *     Archive được xử lý ở Service layer, không phải Database layer.
+ *
+ * Giai đoạn 9: thêm bảng background_image (đặt TRƯỚC surface để FK trong surface
+ * resolve đúng) + 3 cột vào surface.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -126,6 +129,37 @@ export const fixture = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Background Image (Giai đoạn 9) — phải đặt TRƯỚC surface vì surface có FK vào đây.
+// Quyết định E1-E7 trong GIAIDOAN8VA9huongdan.md:
+//   - Bucket private; proxy /api/background-images/[id]/file kiểm đăng nhập.
+//   - uploadedBy trỏ user_profile.userId (không trỏ thẳng auth.users để tránh
+//     drizzle-kit sinh CREATE TABLE "auth"."users" trong migration — CLAUDE.md Giai đoạn 6).
+// ---------------------------------------------------------------------------
+export const backgroundImage = pgTable(
+  "background_image",
+  {
+    backgroundImageId: uuid("background_image_id").primaryKey().defaultRandom(),
+    label: text("label").notNull(),
+    storagePath: text("storage_path").notNull(),
+    mimeType: text("mime_type").notNull(),
+    fileSizeBytes: integer("file_size_bytes").notNull(),
+    widthPx: integer("width_px"),
+    heightPx: integer("height_px"),
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => userProfile.userId, { onDelete: "restrict" }),
+    status: statusColumn(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("uq_background_image_storage_path").on(table.storagePath),
+    check("background_image_file_size_check", sql`${table.fileSizeBytes} > 0`),
+    check("background_image_status_check", sql`${table.status} IN ('Active', 'Archived')`),
+    check("background_image_mime_check", sql`${table.mimeType} IN ('image/png', 'image/jpeg', 'image/webp')`),
+  ]
+);
+
+// ---------------------------------------------------------------------------
 // Surface
 // ---------------------------------------------------------------------------
 export const surface = pgTable(
@@ -140,6 +174,21 @@ export const surface = pgTable(
     widthMm: numeric("width_mm", { precision: 10, scale: 2, mode: "number" }).notNull(),
     heightMm: numeric("height_mm", { precision: 10, scale: 2, mode: "number" }).notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
+    // Giai đoạn 9 — ảnh nền (quyết định E4):
+    // backgroundImageId = NULL có nghĩa là không có ảnh nền.
+    backgroundImageId: uuid("background_image_id").references(
+      () => backgroundImage.backgroundImageId,
+      { onDelete: "restrict" }
+    ),
+    // mode: "number" bắt buộc — thiếu thì Drizzle trả string "0.50", SVG opacity hỏng.
+    backgroundOpacity: numeric("background_opacity", {
+      precision: 3,
+      scale: 2,
+      mode: "number",
+    })
+      .notNull()
+      .default(0.5),
+    backgroundFit: text("background_fit").notNull().default("contain"),
     status: statusColumn(),
     ...timestamps,
   },
@@ -152,6 +201,14 @@ export const surface = pgTable(
       sql`${table.orientation} IN ('Front', 'Back', 'Left', 'Right', 'Top')`
     ),
     check("surface_status_check", sql`${table.status} IN ('Active', 'Archived')`),
+    check(
+      "surface_background_opacity_check",
+      sql`${table.backgroundOpacity} >= 0 AND ${table.backgroundOpacity} <= 1`
+    ),
+    check(
+      "surface_background_fit_check",
+      sql`${table.backgroundFit} IN ('contain', 'cover', 'stretch')`
+    ),
     // Giai đoạn 3: 1 Fixture không được có 2 Surface Active cùng orientation
     // (vật lý không có 2 mặt "Front" cùng lúc) — quyết định implement, xem
     // CLAUDE.md.

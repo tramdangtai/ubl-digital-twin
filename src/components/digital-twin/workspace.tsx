@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
 import { useFixtures } from "@/lib/api/hooks/use-fixtures";
@@ -8,6 +8,7 @@ import { useSurfaceAssignments } from "@/lib/api/hooks/use-product-assignments";
 import { useRetailers } from "@/lib/api/hooks/use-retailers";
 import { useStores } from "@/lib/api/hooks/use-stores";
 import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
+import { backgroundImageUrl } from "@/lib/api/hooks/use-background-images";
 import { OWNER_VISUAL } from "@/lib/constants";
 import { buildSurfaceCsv } from "@/lib/export/surface-csv";
 import { buildSurfaceExportBaseName } from "@/lib/export/filename";
@@ -210,6 +211,11 @@ export function Workspace() {
     content = (
       <>
         <SurfaceBoundsShape surface={surface} scale={scale} panX={panX} panY={panY} />
+
+        {/* Giai đoạn 9 — ảnh nền Surface (đặt TRƯỚC Display Positions để ở dưới cùng DOM). */}
+        {surface.backgroundImageId && (
+          <SurfaceBackgroundImage surface={surface} scale={scale} panX={panX} panY={panY} />
+        )}
 
         {positions?.map((p) => {
           const editing = editingPositionId === p.positionId;
@@ -605,6 +611,65 @@ function SurfaceBoundsShape({
       stroke="#1a365d"
       strokeWidth={2}
     />
+  );
+}
+
+/**
+ * Giai đoạn 9 — Hiển thị ảnh nền Surface trong Surface View.
+ *
+ * Dùng <clipPath> để clip ảnh trong đúng bounding box Surface.
+ * pointerEvents="none" để không chặn click chọn Display Position bên trên.
+ * useId() đảm bảo clipPath id không trùng nhau khi có nhiều SVG trên trang.
+ */
+function SurfaceBackgroundImage({
+  surface,
+  scale,
+  panX,
+  panY,
+}: {
+  surface: Surface;
+  scale: number;
+  panX: number;
+  panY: number;
+}) {
+  const uid = useId();
+  const clipId = `surface-bg-clip-${uid.replace(/:/g, "")}`;
+
+  const rect = positionScreenRect(
+    { x: 0, y: 0, widthMm: surface.widthMm, heightMm: surface.heightMm },
+    scale,
+    panX,
+    panY
+  );
+
+  const src = backgroundImageUrl(surface.backgroundImageId!);
+
+  // Tính preserveAspectRatio theo backgroundFit.
+  const preserveAspectRatio =
+    surface.backgroundFit === "cover"
+      ? "xMidYMid slice"
+      : surface.backgroundFit === "stretch"
+      ? "none"
+      : "xMidYMid meet"; // contain (default)
+
+  return (
+    <g pointerEvents="none">
+      <defs>
+        <clipPath id={clipId}>
+          <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+        </clipPath>
+      </defs>
+      <image
+        href={src}
+        x={rect.x}
+        y={rect.y}
+        width={rect.width}
+        height={rect.height}
+        opacity={surface.backgroundOpacity}
+        preserveAspectRatio={preserveAspectRatio}
+        clipPath={`url(#${clipId})`}
+      />
+    </g>
   );
 }
 

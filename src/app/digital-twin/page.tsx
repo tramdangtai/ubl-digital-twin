@@ -37,9 +37,14 @@ export default function DigitalTwinPage() {
         <span className="ml-2 text-xs text-muted">Uncel Bills</span>
         <div className="ml-auto flex items-center gap-3 text-xs">
           {me?.role === "Admin" && (
-            <Link href="/users" className="text-ubl-primary hover:underline">
-              Quản lý Người dùng
-            </Link>
+            <>
+              <Link href="/users" className="text-ubl-primary hover:underline">
+                Quản lý Người dùng
+              </Link>
+              <Link href="/backgrounds" className="text-ubl-primary hover:underline">
+                Ảnh nền
+              </Link>
+            </>
           )}
           {me && (
             <span className="text-muted">

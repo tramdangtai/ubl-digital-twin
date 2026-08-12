@@ -56,6 +56,23 @@ export interface FixtureEditableFields {
   rotationDegree: number;
 }
 
+/** Giai đoạn 9 — Background Image cho Surface (CLAUDE.md quyết định E1-E7). */
+export type BackgroundFit = "contain" | "cover" | "stretch";
+
+export interface BackgroundImage {
+  backgroundImageId: string;
+  label: string;
+  storagePath: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  widthPx: number | null;
+  heightPx: number | null;
+  uploadedBy: string;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Surface {
   surfaceId: string;
   fixtureId: string;
@@ -64,6 +81,10 @@ export interface Surface {
   widthMm: number;
   heightMm: number;
   sortOrder: number;
+  // Giai đoạn 9 — ảnh nền. null = không có ảnh nền.
+  backgroundImageId: string | null;
+  backgroundOpacity: number;
+  backgroundFit: BackgroundFit;
   status: EntityStatus;
   createdAt: string;
   updatedAt: string;

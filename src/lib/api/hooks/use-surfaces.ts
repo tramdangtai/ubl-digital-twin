@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { EntityStatus, Surface, SurfaceOrientation } from "@/lib/types/entities";
+import type { BackgroundFit, EntityStatus, Surface, SurfaceOrientation } from "@/lib/types/entities";
 
 import { apiClient } from "../client";
 
@@ -39,6 +39,10 @@ export type UpdateSurfaceBody = Partial<{
   heightMm: number;
   sortOrder: number;
   status: EntityStatus;
+  // Giai đoạn 9 — ảnh nền.
+  backgroundImageId: string | null;
+  backgroundOpacity: number;
+  backgroundFit: BackgroundFit;
   expectedUpdatedAt: string;
 }>;
 
