@@ -74,7 +74,7 @@ async function fetchDataUris(
 /**
  * B2: dựng chuỗi SVG — pure function, tái dùng positionScreenRect từ Rendering Engine.
  */
-function buildSurfaceSvgString(
+export function buildSurfaceSvgString(
   ctx: SurfaceExportContext,
   opts: {
     dataUris: Map<string, string>;
@@ -90,11 +90,18 @@ function buildSurfaceSvgString(
 
   const surfaceW = Math.round(surface.widthMm * scale);
   const surfaceH = Math.round(surface.heightMm * scale);
+
+  // Header cũng phải tỉ lệ theo scale, nếu không tiêu đề sẽ nhỏ li ti trên
+  // canvas vài nghìn px — cùng lý do với FONT_MM ở buildTextContent.
+  const titleFont = FONT_MM * 0.85 * scale;
+  const subFont = FONT_MM * 0.6 * scale;
+  const actualHeaderH = Math.max(headerH, titleFont + subFont + titleFont * 0.9);
+
   const totalWidth = surfaceW + padding * 2;
-  const totalHeight = surfaceH + headerH + padding * 2;
+  const totalHeight = surfaceH + actualHeaderH + padding * 2;
 
   const panX = padding;
-  const panY = headerH + padding;
+  const panY = actualHeaderH + padding;
 
   const exportedAt = new Date().toLocaleDateString("vi-VN", {
     day: "2-digit",
@@ -137,21 +144,24 @@ function buildSurfaceSvgString(
     if (cellMode === "image" && prod?.imageUrl) {
       const dataUri = dataUris.get(prod.imageUrl);
       if (dataUri) {
-        // Hiện ảnh + dải item_code ở đáy (font nhỏ hơn vì không gian bị ảnh chiếm).
-        const labelH = 20;
+        // Ảnh chiếm phần trên, dải item_code ở đáy. Font cũng tỉ lệ theo scale
+        // (cùng lý do FONT_MM ở buildTextContent) nhưng nhỏ hơn vì chỉ là nhãn.
+        const labelFont = FONT_MM * 0.75 * scale;
+        const labelH = labelFont * 1.5;
+        const imgH = rect.height - 4 - (rect.height > labelH * 2 ? labelH : 0);
         content = `
-          <image href="${dataUri}" x="${rect.x + 2}" y="${rect.y + 2}" width="${rect.width - 4}" height="${rect.height - 4}" preserveAspectRatio="xMidYMid meet"/>
-          ${rect.height > 50 ? `
-          <rect x="${rect.x}" y="${rect.y + rect.height - labelH}" width="${rect.width}" height="${labelH}" fill="rgba(255,255,255,0.88)"/>
-          <text x="${rect.x + 4}" y="${rect.y + rect.height - 5}" font-size="11" fill="${OCCUPIED_TEXT}" clip-path="url(#${clipId})">${escXml(prod.itemCode)}</text>
+          <image href="${dataUri}" x="${rect.x + 2}" y="${rect.y + 2}" width="${rect.width - 4}" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>
+          ${rect.height > labelH * 2 ? `
+          <rect x="${rect.x}" y="${rect.y + rect.height - labelH}" width="${rect.width}" height="${labelH}" fill="rgba(255,255,255,0.9)"/>
+          <text x="${rect.x + Math.max(4, labelFont * 0.25)}" y="${rect.y + rect.height - labelH * 0.3}" font-size="${labelFont}" font-weight="600" fill="${OCCUPIED_TEXT}" clip-path="url(#${clipId})">${escXml(prod.itemCode)}</text>
           ` : ""}
         `;
       } else {
         // Ảnh fetch thất bại — fallback về chữ.
-        content = buildTextContent(rect, pos, asgn, textFill, clipId);
+        content = buildTextContent(rect, pos, asgn, textFill, clipId, scale);
       }
     } else {
-      content = buildTextContent(rect, pos, asgn, textFill, clipId);
+      content = buildTextContent(rect, pos, asgn, textFill, clipId, scale);
     }
 
     return baseShape + content;
@@ -188,10 +198,10 @@ function buildSurfaceSvgString(
   <rect width="${totalWidth}" height="${totalHeight}" fill="#ffffff"/>
 
   <!-- Dải tiêu đề -->
-  <rect width="${totalWidth}" height="${headerH}" fill="#f8fafc"/>
-  <rect width="${totalWidth}" height="1" y="${headerH}" fill="#e2e8f0"/>
-  <text x="${padding}" y="18" font-size="13" font-weight="600" fill="#1e3a5f">${titleText}</text>
-  <text x="${padding}" y="34" font-size="10" fill="#64748b">${subtitleText}</text>
+  <rect width="${totalWidth}" height="${actualHeaderH}" fill="#f8fafc"/>
+  <rect width="${totalWidth}" height="${Math.max(1, scale)}" y="${actualHeaderH}" fill="#e2e8f0"/>
+  <text x="${padding}" y="${titleFont * 1.15}" font-size="${titleFont}" font-weight="700" fill="#1e3a5f">${titleText}</text>
+  <text x="${padding}" y="${titleFont * 1.15 + subFont * 1.4}" font-size="${subFont}" fill="#64748b">${subtitleText}</text>
 
   <!-- Viền Surface -->
   <rect x="${panX}" y="${panY}" width="${surfaceW}" height="${surfaceH}" fill="#ffffff" stroke="#1a365d" stroke-width="2"/>
@@ -206,28 +216,72 @@ function buildSurfaceSvgString(
   return { svg, totalWidth, totalHeight };
 }
 
+/**
+ * Font size cho PNG export.
+ *
+ * PNG render ở scale riêng (~1.5), lớn hơn nhiều lần scale màn hình
+ * (DEFAULT_SCALE = 0.25). Nếu để font cố định 16px thì khi mở ảnh xem vừa màn
+ * hình, chữ hiện ra còn nhỏ hơn lúc xem trên web. Vì vậy font phải tỉ lệ theo
+ * scale: FONT_MM chọn sao cho ở scale màn hình 0.25 sẽ ra đúng 16px
+ * (16 / 0.25 = 64mm) — kích thước Tài đã chốt là dễ đọc.
+ */
+const FONT_MM = 64;
+
 function buildTextContent(
   rect: { x: number; y: number; width: number; height: number },
   pos: { displayType: string },
   asgn: { product: { description: string; itemCode: string } } | undefined,
   textFill: string,
-  clipId: string
+  clipId: string,
+  scale: number
 ): string {
   if (rect.width <= 20) return "";
 
-  const FONT = 16;
-  const LINE = 22; // khoảng cách dòng
+  const font = FONT_MM * scale;
+  const line = font * 1.35; // khoảng cách dòng
+  const padX = Math.max(4, font * 0.25);
+  const baseY = rect.y + font + font * 0.15;
 
   if (!asgn) {
-    return `<text x="${rect.x + 4}" y="${rect.y + FONT + 2}" font-size="${FONT}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(pos.displayType)}</text>`;
+    return `<text x="${rect.x + padX}" y="${baseY}" font-size="${font}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(pos.displayType)}</text>`;
   }
 
-  // item_code trước, description sau — clip ngăn tràn phải, tràn xuống tự bị cắt bởi clipPath.
-  let text = `<text x="${rect.x + 4}" y="${rect.y + FONT + 2}" font-size="${FONT}" font-weight="600" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.itemCode)}</text>`;
-  if (rect.height > LINE + FONT + 4) {
-    text += `<text x="${rect.x + 4}" y="${rect.y + FONT + 2 + LINE}" font-size="${FONT}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.description)}</text>`;
+  // item_code trước (bold), description xuống dòng bên dưới. Dòng nào vượt quá
+  // đáy ô thì bỏ — clipPath vẫn cắt phần thừa nếu 1 từ dài hơn cả bề ngang ô.
+  let text = `<text x="${rect.x + padX}" y="${baseY}" font-size="${font}" font-weight="700" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.itemCode)}</text>`;
+
+  const usableW = rect.width - padX * 2;
+  const maxLines = Math.floor((rect.height - baseY + rect.y - font * 0.3) / line);
+  for (const [i, lineText] of wrapText(asgn.product.description, usableW, font, maxLines).entries()) {
+    text += `<text x="${rect.x + padX}" y="${baseY + line * (i + 1)}" font-size="${font}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(lineText)}</text>`;
   }
   return text;
+}
+
+/**
+ * Ngắt dòng thủ công — SVG <text> không tự wrap. Ước lượng bề rộng ký tự theo
+ * font-size (hệ số 0.52 hợp với font sans-serif hệ thống); không cần chính xác
+ * tuyệt đối vì clipPath đã chặn phần tràn.
+ */
+function wrapText(raw: string, maxWidth: number, fontSize: number, maxLines: number): string[] {
+  if (maxLines < 1 || !raw) return [];
+  const charW = fontSize * 0.52;
+  const maxChars = Math.max(1, Math.floor(maxWidth / charW));
+
+  const lines: string[] = [];
+  let current = "";
+  for (const word of raw.split(/\s+/)) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+      if (lines.length >= maxLines) break;
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines.slice(0, maxLines);
 }
 
 /**
