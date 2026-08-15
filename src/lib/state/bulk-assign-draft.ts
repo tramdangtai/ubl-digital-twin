@@ -46,6 +46,15 @@ export const STAMP_REJECT_MESSAGES: Record<StampRejectReason, string> = {
 /** Trần mỗi lần Lưu, khớp MAX_BULK_ASSIGN_ITEMS ở validation/product-assignment.ts. */
 export const MAX_PENDING_ASSIGNMENTS = 200;
 
+/**
+ * MIME type riêng cho thao tác kéo-thả Product vào ô trên canvas.
+ *
+ * Dùng type riêng (không phải "text/plain") để canvas chỉ nhận đúng thứ app
+ * này kéo ra — kéo một đoạn text bất kỳ từ nơi khác vào sẽ không bị hiểu nhầm
+ * thành lệnh gán sản phẩm.
+ */
+export const PRODUCT_DND_MIME = "application/x-ubl-product";
+
 interface BulkAssignDraftState {
   /** null = không có phiên nào. Phiên luôn gắn với đúng 1 Surface. */
   surfaceId: string | null;

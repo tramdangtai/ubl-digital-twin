@@ -39,6 +39,8 @@ interface SelectionState {
   selectFixture: (fixtureId: string) => void;
   selectSurface: (fixtureId: string, surfaceId: string) => void;
   selectDisplayPosition: (surfaceId: string, positionId: string) => void;
+  /** Bỏ chọn ô đang chọn (phím Esc) — không đụng tới Surface đang mở. */
+  clearDisplayPositionSelection: () => void;
   selectProduct: (productId: string) => void;
   startCreateRetailer: () => void;
   startCreateStore: (retailerId: string) => void;
@@ -125,6 +127,10 @@ export const useSelectionStore = create<SelectionState>((set) => ({
       mode: "view",
     });
   },
+  clearDisplayPositionSelection: () => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    set({ selectedDisplayPositionId: null, mode: "view" });
+  },
   selectProduct: (productId) => {
     if (!confirmDiscardUnsavedChanges()) return;
     set({ explorerTab: "products", selectedProductId: productId, mode: "view" });
@@ -189,7 +195,10 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   startBulkAssignProduct: (surfaceId, product) => {
     if (!confirmDiscardUnsavedChanges()) return;
     useBulkAssignDraftStore.getState().startSession(surfaceId, product);
-    set({ explorerTab: "twin", selectedSurfaceId: surfaceId, mode: "bulk-assign-product" });
+    // KHÔNG ép explorerTab về "twin": thanh gán nằm ở Workspace, không phải
+    // Explorer. Ép đổi tab sẽ cướp mất danh sách Product ngay sau khi user kéo
+    // thả một sản phẩm vào ô — đúng lúc họ đang định kéo tiếp cái thứ hai.
+    set({ selectedSurfaceId: surfaceId, mode: "bulk-assign-product" });
   },
   endBulkAssignProduct: () => {
     useBulkAssignDraftStore.getState().endSession();

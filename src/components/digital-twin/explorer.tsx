@@ -9,6 +9,7 @@ import { useProducts } from "@/lib/api/hooks/use-products";
 import { useRetailers } from "@/lib/api/hooks/use-retailers";
 import { useStores } from "@/lib/api/hooks/use-stores";
 import { useSurfaces } from "@/lib/api/hooks/use-surfaces";
+import { PRODUCT_DND_MIME } from "@/lib/state/bulk-assign-draft";
 import { useSelectionStore } from "@/lib/state/selection";
 import type { Store } from "@/lib/types/entities";
 import { ProductThumb } from "./product-thumb";
@@ -75,7 +76,8 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
 function DigitalTwinTree() {
   const { data: me } = useCurrentUser();
   const writable = canWrite(me?.role);
-  const { data: retailers, isLoading, error } = useRetailers();
+  const retailersQuery = useRetailers();
+  const { data: retailers, isLoading, error } = retailersQuery;
   const { data: stores } = useStores();
   const {
     selectedRetailerId,
@@ -112,8 +114,24 @@ function DigitalTwinTree() {
   return (
     <div className="flex-1 overflow-y-auto p-2 text-sm">
       {isLoading && <p className="p-2 text-muted">Đang tải...</p>}
-      {error && <p className="p-2 text-red-600">Không tải được danh sách Retailer.</p>}
-      {retailers?.length === 0 && (
+      {error && (
+        <div className="m-2 rounded border border-red-200 bg-red-50 p-2">
+          <p className="mb-1 text-xs font-medium text-red-700">
+            Không tải được danh sách Retailer.
+          </p>
+          <p className="mb-2 text-[11px] text-red-600">
+            Lỗi kết nối, dữ liệu vẫn còn nguyên trên máy chủ.
+          </p>
+          <button
+            onClick={() => retailersQuery.refetch()}
+            disabled={retailersQuery.isFetching}
+            className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {retailersQuery.isFetching ? "Đang thử lại..." : "Thử lại"}
+          </button>
+        </div>
+      )}
+      {!isLoading && !error && retailers?.length === 0 && (
         <p className="p-2 text-muted">Chưa có Retailer nào. Bấm “+ Retailer” để tạo.</p>
       )}
 
@@ -292,9 +310,14 @@ function DigitalTwinTree() {
 function ProductLibraryList() {
   const [search, setSearch] = useState("");
   const { data, isLoading, error } = useProducts(search);
-  const { selectedProductId, mode, selectProduct } = useSelectionStore();
+  const { selectedProductId, mode, selectProduct, selectedSurfaceId } = useSelectionStore();
+  const { data: me } = useCurrentUser();
+  const writable = canWrite(me?.role);
 
   const products = data?.data ?? [];
+  // Chỉ kéo-thả được khi đang mở một Surface và có quyền ghi — thả vào đâu bây
+  // giờ nếu chưa mở Surface nào.
+  const draggable = writable && Boolean(selectedSurfaceId);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -306,6 +329,11 @@ function ProductLibraryList() {
           className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-ubl-primary"
         />
       </div>
+      {draggable && (
+        <p className="border-b border-border bg-ubl-primary/5 px-2 py-1 text-[11px] text-muted">
+          Mẹo: kéo sản phẩm thả thẳng vào ô trên canvas để gán.
+        </p>
+      )}
       <div className="flex-1 overflow-y-auto p-2 text-sm">
         {isLoading && <p className="p-2 text-muted">Đang tải...</p>}
         {error && <p className="p-2 text-red-600">Không tải được danh sách Product.</p>}
@@ -320,9 +348,24 @@ function ProductLibraryList() {
             <button
               key={p.productId}
               onClick={() => selectProduct(p.productId)}
+              draggable={draggable}
+              onDragStart={(e) => {
+                if (!draggable) return;
+                e.dataTransfer.setData(
+                  PRODUCT_DND_MIME,
+                  JSON.stringify({
+                    productId: p.productId,
+                    itemCode: p.itemCode,
+                    description: p.description,
+                    imageUrl: p.imageUrl ?? null,
+                  })
+                );
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+              title={draggable ? "Kéo thả vào một ô trên canvas để gán" : undefined}
               className={`mb-1 flex w-full flex-row items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-muted-bg ${
                 selected ? "bg-ubl-primary/10" : ""
-              }`}
+              } ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
             >
               <ProductThumb url={p.imageUrl} alt={p.description} size={32} />
               <div className="flex min-w-0 flex-col">

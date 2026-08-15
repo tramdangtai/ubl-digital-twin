@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { canWrite, useCurrentUser } from "@/lib/api/hooks/use-current-user";
 import { useDisplayPositions } from "@/lib/api/hooks/use-display-positions";
@@ -34,8 +34,10 @@ import {
 import { useImageStatus } from "@/lib/rendering/use-image-status";
 import {
   MAX_PENDING_ASSIGNMENTS,
+  PRODUCT_DND_MIME,
   useBulkAssignDraftStore,
   type PendingAssignment,
+  type StampProductRef,
   type StampRejectReason,
 } from "@/lib/state/bulk-assign-draft";
 import { BulkAssignBar } from "./bulk-assign-bar";
@@ -78,18 +80,23 @@ export function Workspace() {
     mode,
     selectFixture,
     selectDisplayPosition,
+    clearDisplayPositionSelection,
     startBulkAssignProduct,
   } = useSelectionStore();
   const { data: me } = useCurrentUser();
   const writable = canWrite(me?.role);
   const { data: retailers } = useRetailers();
-  const { data: stores } = useStores();
-  const { data: fixtures } = useFixtures(selectedStoreId ?? undefined);
+  const storesQuery = useStores();
+  const { data: stores } = storesQuery;
+  const fixturesQuery = useFixtures(selectedStoreId ?? undefined);
+  const { data: fixtures } = fixturesQuery;
   const { data: surfaces } = useSurfaces(selectedFixtureId ?? undefined);
-  const { data: positions } = useDisplayPositions(selectedSurfaceId ?? undefined);
+  const positionsQuery = useDisplayPositions(selectedSurfaceId ?? undefined);
+  const { data: positions } = positionsQuery;
 
   // Giai đoạn 8 A2: 1 query thay vì N+1 per-position.
-  const { data: surfaceAssignments } = useSurfaceAssignments(selectedSurfaceId ?? undefined);
+  const assignmentsQuery = useSurfaceAssignments(selectedSurfaceId ?? undefined);
+  const { data: surfaceAssignments } = assignmentsQuery;
 
   const store = stores?.find((s) => s.storeId === selectedStoreId);
   const fixture = fixtures?.find((f) => f.fixtureId === selectedFixtureId);
@@ -97,20 +104,27 @@ export function Workspace() {
   const retailer = retailers?.find((r) => r.retailerId === store?.retailerId);
 
   // Map<positionId, AssignmentWithProduct> cho O(1) lookup trong DisplayPositionShape.
-  const assignmentMap = new Map<string, AssignmentWithProduct>();
-  if (surfaceAssignments) {
-    for (const a of surfaceAssignments) {
-      assignmentMap.set(a.positionId, a);
-    }
-  }
+  // useMemo để pan/zoom không dựng lại Map hàng trăm phần tử mỗi frame.
+  const assignmentMap = useMemo(() => {
+    const map = new Map<string, AssignmentWithProduct>();
+    for (const a of surfaceAssignments ?? []) map.set(a.positionId, a);
+    return map;
+  }, [surfaceAssignments]);
 
-  const { scale, panX, panY, zoomBy, panBy, resetView } = useWorkspaceViewStore();
+  const { scale, panX, panY, zoomBy, zoomAt, panBy, fitTo, resetView } = useWorkspaceViewStore();
   const { editingFixtureId, draft: fixtureDraft } = useFixtureDraftStore();
   const { editingPositionId, draft: positionDraft } = useDisplayPositionDraftStore();
   const { draft: bulkDraft } = useBulkGenerateDraftStore();
   const { cellMode, setCellMode, cellOpacity, setCellOpacity } = useSurfaceViewModeStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // State song song với ref: effect cần biết THỜI ĐIỂM container xuất hiện,
+  // mà thay đổi của ref thì không kích hoạt effect.
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
+  const setCanvasRef = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    setCanvasEl(el);
+  }, []);
   const isSurfaceView = Boolean(selectedSurfaceId && surface);
   // Chỉ giảm độ đậm khung khi thật sự có ảnh nền phía sau — Surface không có
   // ảnh nền phải giữ nguyên 100% hành vi cũ.
@@ -139,6 +153,25 @@ export function Workspace() {
   const [isExportingPng, setIsExportingPng] = useState(false);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
 
+  /**
+   * Tự canh vừa khung mỗi khi mở một Surface KHÁC.
+   *
+   * Trước đây mọi Surface đều mở ở 25% với pan cố định (40,40) — Surface cao
+   * 2100mm chỉ hiện 525px, còn đổi giữa 2 Surface thì giữ nguyên zoom/pan cũ
+   * nên Surface mới có thể nằm ngoài tầm nhìn. Khoá theo surfaceId để không
+   * đè lên zoom/pan mà user tự chỉnh trong lúc làm việc.
+   */
+  const fittedSurfaceRef = useRef<string | null>(null);
+  useEffect(() => {
+    // canvasEl (state) chứ không phải containerRef — cùng lý do với wheel listener.
+    if (!isSurfaceView || !surface || !canvasEl) return;
+    if (fittedSurfaceRef.current === surface.surfaceId) return;
+    const box = canvasEl.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return;
+    fitTo(surface.widthMm, surface.heightMm, box.width, box.height);
+    fittedSurfaceRef.current = surface.surfaceId;
+  }, [isSurfaceView, surface, fitTo, canvasEl]);
+
   // Đổi context giữa floor-plan (Store) và Surface View là đổi hệ tọa độ hoàn
   // toàn khác nhau (mm khác nhau, gốc khác nhau) — reset zoom/pan để tránh
   // scale/pan cũ từ context trước gây khó hiểu.
@@ -146,22 +179,52 @@ export function Workspace() {
   useEffect(() => {
     const current: "store" | "surface" | null = isSurfaceView ? "surface" : store ? "store" : null;
     if (current && prevContextRef.current && current !== prevContextRef.current) {
-      resetView();
+      // Rời Surface View → quên fit cũ để lần sau quay lại canh lại từ đầu.
+      if (current === "store") {
+        fittedSurfaceRef.current = null;
+        resetView();
+      }
     }
     prevContextRef.current = current;
   }, [isSurfaceView, store, resetView]);
 
-  // Wheel zoom — native listener non-passive để preventDefault chặn page scroll.
+  /**
+   * Wheel zoom — native listener non-passive để preventDefault chặn page scroll.
+   * Zoom bám con trỏ: điểm dưới chuột đứng yên, thay vì nội dung trôi đi như trước.
+   *
+   * Phải phụ thuộc vào `canvasEl` (state) chứ KHÔNG phải `containerRef.current`:
+   * lúc chưa chọn Store, component return sớm nên container chưa tồn tại; ref
+   * thay đổi không làm effect chạy lại, nên listener sẽ không bao giờ được gắn
+   * và lăn chuột mất tác dụng. Đây là bug có sẵn, phát hiện khi test tay.
+   */
   useEffect(() => {
-    const el = containerRef.current;
+    const el = canvasEl;
     if (!el) return;
     function onWheel(e: WheelEvent) {
       e.preventDefault();
-      zoomBy(e.deltaY < 0 ? 1.1 : 0.9);
+      const box = el!.getBoundingClientRect();
+      zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - box.left, e.clientY - box.top);
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoomBy]);
+  }, [zoomAt, canvasEl]);
+
+  /**
+   * Esc = bỏ chọn / thoát phiên dán. Trước đây không có cách nào bỏ chọn một
+   * Display Position (bấm nền chỉ pan) nên viền cam cứ dính mãi.
+   */
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      // Đang gõ trong ô nhập thì Esc thuộc về ô đó, không phải canvas.
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if (useBulkAssignDraftStore.getState().surfaceId !== null) return; // thanh gán tự lo
+      if (selectedDisplayPositionId) clearDisplayPositionSelection();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedDisplayPositionId, clearDisplayPositionSelection]);
 
   // Pan bằng kéo nền canvas (không phải kéo Fixture — xem stopPropagation trong các Shape).
   const panDragRef = useRef<{ lastX: number; lastY: number } | null>(null);
@@ -263,12 +326,42 @@ export function Workspace() {
     draft.stampPosition(p.positionId);
   }
 
+  /**
+   * Thả một Product từ Product Library vào ô.
+   *
+   * Đi qua đúng Draft của gán hàng loạt: nếu chưa có phiên thì mở phiên mới với
+   * sản phẩm vừa thả. Nhờ vậy thả xong vẫn là ô cam "chờ lưu", vẫn phải bấm Lưu
+   * mới ghi DB — không phá nguyên tắc Draft → Save, và tái dùng luôn toàn bộ
+   * đường Save/Huỷ/undo đã có thay vì dựng luồng ghi thứ hai.
+   */
+  function handleDropProduct(p: DisplayPosition, product: StampProductRef) {
+    if (!writable || !selectedSurfaceId) return;
+    const draft = useBulkAssignDraftStore.getState();
+    if (draft.surfaceId !== selectedSurfaceId) {
+      startBulkAssignProduct(selectedSurfaceId, product);
+    } else {
+      draft.setCurrentProduct(product);
+    }
+    handleStamp(p);
+  }
+
   if (!store) {
+    // Lỗi tải danh sách Store trông y hệt "chưa chọn Store" nếu không tách ra —
+    // user sẽ tưởng mất dữ liệu. Phải nói rõ và cho đường thử lại.
+    const storesFailed = storesQuery.isError;
     return (
       <div className="flex h-full flex-1 flex-col bg-background">
         <WorkspaceHeader />
         <div className="flex flex-1 items-center justify-center">
-          {mode !== "view" ? (
+          {storesFailed ? (
+            <CanvasErrorState
+              message="Không tải được danh sách Store."
+              onRetry={() => storesQuery.refetch()}
+              isRetrying={storesQuery.isFetching}
+            />
+          ) : storesQuery.isLoading ? (
+            <p className="text-sm text-muted">Đang tải...</p>
+          ) : mode !== "view" ? (
             <p className="text-sm text-muted">Đang tạo mới ở Inspector →</p>
           ) : (
             <p className="max-w-xs text-center text-sm text-muted">
@@ -283,6 +376,8 @@ export function Workspace() {
   let title: string;
   let content: React.ReactNode;
   let emptyMessage: string | null = null;
+  /** Lỗi tải dữ liệu của canvas — ưu tiên cao hơn emptyMessage. */
+  let errorState: { message: string; onRetry: () => void; isRetrying: boolean } | null = null;
 
   if (isSurfaceView && surface) {
     title = `${store.storeName} — ${surface.surfaceName || surface.orientation}`;
@@ -326,6 +421,10 @@ export function Workspace() {
               itemError={bulkAssign.itemErrors[p.positionId]}
               onSelect={() => selectDisplayPosition(surface.surfaceId, p.positionId)}
               onStamp={() => handleStamp(p)}
+              onDropProduct={writable ? (prod) => handleDropProduct(p, prod) : undefined}
+              dropDisabled={
+                assignmentMap.has(p.positionId) && !bulkAssign.pending[p.positionId]
+              }
             />
           );
         })}
@@ -333,7 +432,23 @@ export function Workspace() {
         {bulkDraft && <BulkGeneratePreview draft={bulkDraft} scale={scale} panX={panX} panY={panY} />}
       </>
     );
-    if ((positions?.length ?? 0) === 0 && !bulkDraft) {
+    // Thứ tự ưu tiên: lỗi > đang tải > thật sự trống. Trước đây gộp cả ba nên
+    // mỗi lần mở Surface đều nháy "Chưa có Display Position", và lỗi API thì
+    // trông y hệt Surface rỗng.
+    if (positionsQuery.isError || assignmentsQuery.isError) {
+      errorState = {
+        message: positionsQuery.isError
+          ? "Không tải được danh sách Display Position."
+          : "Không tải được thông tin sản phẩm đang gán.",
+        onRetry: () => {
+          if (positionsQuery.isError) positionsQuery.refetch();
+          if (assignmentsQuery.isError) assignmentsQuery.refetch();
+        },
+        isRetrying: positionsQuery.isFetching || assignmentsQuery.isFetching,
+      };
+    } else if (positionsQuery.isLoading) {
+      emptyMessage = "Đang tải Display Position...";
+    } else if ((positions?.length ?? 0) === 0 && !bulkDraft) {
       emptyMessage =
         'Chưa có Display Position. Bấm "+ Add Display Position" hoặc "+ Bulk Generate..." ở Explorer.';
     }
@@ -376,7 +491,15 @@ export function Workspace() {
         })}
       </>
     );
-    if ((fixtures?.length ?? 0) === 0) {
+    if (fixturesQuery.isError) {
+      errorState = {
+        message: "Không tải được danh sách Fixture.",
+        onRetry: () => fixturesQuery.refetch(),
+        isRetrying: fixturesQuery.isFetching,
+      };
+    } else if (fixturesQuery.isLoading) {
+      emptyMessage = "Đang tải Fixture...";
+    } else if ((fixtures?.length ?? 0) === 0) {
       emptyMessage = 'Chưa có Fixture. Bấm "+ Add Fixture" ở Explorer để tạo.';
     }
   }
@@ -415,9 +538,21 @@ export function Workspace() {
           selectedSurfaceId && startBulkAssignProduct(selectedSurfaceId, null)
         }
         pendingCount={pendingCount}
+        onFitToView={() => {
+          const box = containerRef.current?.getBoundingClientRect();
+          if (!box) return;
+          if (isSurfaceView && surface) {
+            fitTo(surface.widthMm, surface.heightMm, box.width, box.height);
+          } else {
+            // Floor plan: canh theo bounding box của toàn bộ Fixture đang có.
+            const maxX = Math.max(...(fixtures ?? []).map((f) => f.positionX + f.widthMm), 0);
+            const maxY = Math.max(...(fixtures ?? []).map((f) => f.positionY + f.depthMm), 0);
+            if (maxX > 0 && maxY > 0) fitTo(maxX, maxY, box.width, box.height);
+          }
+        }}
       />
       {stampMode && selectedSurfaceId && <BulkAssignBar surfaceId={selectedSurfaceId} />}
-      <div ref={containerRef} className="relative flex-1 overflow-hidden">
+      <div ref={setCanvasRef} className="relative flex-1 overflow-hidden">
         <svg
           className="h-full w-full cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={(e) => {
@@ -428,12 +563,51 @@ export function Workspace() {
           {content}
         </svg>
 
-        {emptyMessage && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <p className="max-w-xs text-center text-sm text-muted">{emptyMessage}</p>
+        {errorState ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+            <CanvasErrorState {...errorState} />
           </div>
+        ) : (
+          emptyMessage && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <p className="max-w-xs text-center text-sm text-muted">{emptyMessage}</p>
+            </div>
+          )
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Trạng thái lỗi tải dữ liệu trên canvas.
+ *
+ * Trước đây API lỗi và "chưa có dữ liệu" hiển thị y hệt nhau (cùng là canvas
+ * trống) — user tưởng mất dữ liệu. Phải nói rõ đây là lỗi tải và cho đường thử
+ * lại tại chỗ, không bắt refresh cả trang.
+ */
+function CanvasErrorState({
+  message,
+  onRetry,
+  isRetrying,
+}: {
+  message: string;
+  onRetry: () => void;
+  isRetrying: boolean;
+}) {
+  return (
+    <div className="max-w-xs rounded border border-red-200 bg-red-50 px-4 py-3 text-center">
+      <p className="mb-1 text-sm font-medium text-red-700">{message}</p>
+      <p className="mb-3 text-xs text-red-600">
+        Dữ liệu vẫn còn nguyên trên máy chủ — đây là lỗi kết nối, không phải mất dữ liệu.
+      </p>
+      <button
+        onClick={onRetry}
+        disabled={isRetrying}
+        className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+      >
+        {isRetrying ? "Đang thử lại..." : "Thử lại"}
+      </button>
     </div>
   );
 }
@@ -458,6 +632,7 @@ function WorkspaceHeader({
   canBulkAssign = false,
   onStartBulkAssign,
   pendingCount = 0,
+  onFitToView,
 }: {
   title?: string;
   scale?: number;
@@ -478,6 +653,7 @@ function WorkspaceHeader({
   canBulkAssign?: boolean;
   onStartBulkAssign?: () => void;
   pendingCount?: number;
+  onFitToView?: () => void;
 }) {
   return (
     <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
@@ -587,6 +763,15 @@ function WorkspaceHeader({
               −
             </button>
             <span className="w-12 text-center text-xs text-muted">{Math.round(scale * 100)}%</span>
+            {onFitToView && (
+              <button
+                onClick={onFitToView}
+                title="Canh toàn bộ vừa khung nhìn"
+                className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+              >
+                Vừa khung
+              </button>
+            )}
             <button
               onClick={onZoomIn}
               className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
@@ -845,6 +1030,8 @@ function DisplayPositionShape({
   itemError,
   onSelect,
   onStamp,
+  onDropProduct,
+  dropDisabled = false,
 }: {
   position: DisplayPosition;
   geometry: PositionGeometry;
@@ -863,10 +1050,18 @@ function DisplayPositionShape({
   itemError?: string;
   onSelect: () => void;
   onStamp?: () => void;
+  onDropProduct?: (p: StampProductRef) => void;
+  /** Ô đã có hàng / không Active → không nhận thả. */
+  dropDisabled?: boolean;
 }) {
   const rect = positionScreenRect(geometry, scale, panX, panY);
   const active = assignment ?? null;
   const [hovered, setHovered] = useState(false);
+
+  // Cắt chữ trong đúng khung ô — trước đây description dài tràn sang ô bên cạnh,
+  // trong khi bản PNG đã cắt gọn → màn hình và file xuất ra không khớp nhau.
+  const uid = useId();
+  const textClipId = `pos-text-clip-${uid.replace(/:/g, "")}`;
 
   // Phân biệt click thật với thao tác pan bắt đầu trên ô. Không có ngưỡng này
   // thì mỗi lần kéo canvas từ trên một ô sẽ vô tình dán sản phẩm vào đó.
@@ -905,6 +1100,10 @@ function DisplayPositionShape({
   // Ô đã có hàng thì không dán chồng được (DB chỉ cho 1 Active assignment/ô).
   const stampBlocked = stampMode && Boolean(active) && !pending;
 
+  // Kéo-thả: chỉ sáng khi con trỏ đang mang đúng dữ liệu Product của app này.
+  const [dragOver, setDragOver] = useState(false);
+  const canDrop = Boolean(onDropProduct) && !dropDisabled;
+
   // Trạng thái ảnh cho chế độ "Ảnh" — useImageStatus trả "none" khi không có URL.
   const imageStatus = useImageStatus(
     cellMode === "image" ? active?.product.imageUrl : null
@@ -935,19 +1134,62 @@ function DisplayPositionShape({
       }}
       onPointerEnter={() => stampMode && setHovered(true)}
       onPointerLeave={() => stampMode && setHovered(false)}
+      // Kéo-thả Product từ Product Library vào ô. Thả xong vẫn là ô "chờ lưu"
+      // trong cùng Draft với gán hàng loạt — không ghi DB ngay (nguyên tắc #1).
+      onDragOver={(e) => {
+        if (!canDrop || !e.dataTransfer.types.includes(PRODUCT_DND_MIME)) return;
+        e.preventDefault(); // bắt buộc, nếu không trình duyệt sẽ không cho thả
+        e.dataTransfer.dropEffect = "copy";
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={() => dragOver && setDragOver(false)}
+      onDrop={(e) => {
+        setDragOver(false);
+        if (!canDrop) return;
+        const raw = e.dataTransfer.getData(PRODUCT_DND_MIME);
+        if (!raw) return;
+        e.preventDefault();
+        try {
+          onDropProduct!(JSON.parse(raw) as StampProductRef);
+        } catch {
+          // Payload hỏng → bỏ qua, không làm gì cả.
+        }
+      }}
       className={
         stampMode ? (stampBlocked ? "cursor-not-allowed" : "cursor-copy") : "cursor-pointer"
       }
     >
-      {stampMode && (
-        <title>
-          {stampBlocked
+      {/* Tooltip. Quan trọng nhất khi ô quá hẹp để vẽ chữ (rect.width <= 30) —
+          trước đây những ô đó không hiện gì, rê chuột cũng không biết có gì bên trong. */}
+      <title>
+        {stampMode
+          ? stampBlocked
             ? "Ô này đã có sản phẩm"
             : pending
             ? `${pending.itemCode} — bấm lại để bỏ`
-            : "Bấm để gán sản phẩm đang chọn"}
-        </title>
-      )}
+            : "Bấm để gán sản phẩm đang chọn"
+          : [
+              `${position.displayType} (${position.x}, ${position.y})`,
+              `${position.widthMm} × ${position.heightMm} mm`,
+              active
+                ? `${active.product.itemCode} — ${active.product.description} (facing ${active.facingQty})`
+                : "Chưa gán sản phẩm",
+              position.capacity != null ? `Capacity: ${position.capacity}` : null,
+              position.facingLimit != null ? `Facing limit: ${position.facingLimit}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n")}
+      </title>
+      <defs>
+        <clipPath id={textClipId}>
+          <rect
+            x={rect.x + 3}
+            y={rect.y}
+            width={Math.max(0, rect.width - 6)}
+            height={rect.height}
+          />
+        </clipPath>
+      </defs>
       <rect
         x={rect.x}
         y={rect.y}
@@ -960,6 +1202,21 @@ function DisplayPositionShape({
         strokeDasharray={editing || pending ? "6 3" : undefined}
         rx={2}
       />
+
+      {/* Đang rê sản phẩm lên ô này — tô nổi để biết sẽ thả vào đâu */}
+      {dragOver && (
+        <rect
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
+          fill={PENDING_FILL}
+          fillOpacity={0.85}
+          stroke={PENDING_STROKE}
+          strokeWidth={3}
+          rx={2}
+        />
+      )}
 
       {/* Viền ma khi rê chuột lên ô trống trong chế độ dán */}
       {stampMode && hovered && !stampBlocked && (
@@ -1044,6 +1301,7 @@ function DisplayPositionShape({
               fontSize={9}
               fontWeight={active || pending ? 600 : 400}
               fill={cellText}
+              clipPath={`url(#${textClipId})`}
               className="select-none"
             >
               {pending
@@ -1059,6 +1317,7 @@ function DisplayPositionShape({
               y={rect.y + 23}
               fontSize={8}
               fill={cellText}
+              clipPath={`url(#${textClipId})`}
               className="select-none"
             >
               {pending ? pending.description : active!.product.description}

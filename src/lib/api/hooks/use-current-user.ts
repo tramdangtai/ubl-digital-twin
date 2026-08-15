@@ -5,13 +5,25 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, UserRole } from "@/lib/types/entities";
 
-import { apiClient } from "../client";
+import { apiClient, ApiRequestError } from "../client";
 
 export function useCurrentUser() {
   return useQuery({
     queryKey: ["me"],
     queryFn: () => apiClient.get<UserProfile>("/api/me"),
-    retry: false,
+    /**
+     * Trước đây `retry: false` khiến một lỗi 500 thoáng qua (mất mạng, DB chớp
+     * tắt) làm `me` hỏng vĩnh viễn cả phiên → `canWrite()` trả false → toàn bộ
+     * nút tạo/sửa biến mất và user tưởng bị mất quyền.
+     *
+     * 401/403 là câu trả lời dứt khoát của máy chủ, thử lại vô nghĩa. Còn lỗi
+     * 5xx/mạng thì đáng thử lại vài lần.
+     */
+    retry: (failureCount, error) => {
+      const status = error instanceof ApiRequestError ? error.status : 0;
+      if (status === 401 || status === 403) return false;
+      return failureCount < 3;
+    },
     staleTime: 60_000,
   });
 }

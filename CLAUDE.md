@@ -517,6 +517,57 @@ Xuất phát từ phiên thảo luận UI/UX với Tài (2026-08-12). Ba việc,
 - **Dữ liệu test còn lại**: 6 Product Assignment mới trên Surface `Emart Sala / Kệ trái / Front` (4 ô
   item_code `17TY0405`, 2 ô `90686`) — tạo trong lúc test, an toàn để giữ hoặc unassign.
 
+**Giai đoạn 11 (Kéo thả Product + nâng chất lượng UI/UX) đã xong:**
+
+Xuất phát từ yêu cầu của Tài: thêm kéo-thả Product, và tự audit chất lượng UI/UX. Audit làm bằng cách
+dùng thật app + đo DOM, không chỉ đọc code.
+
+- **Kết nối DB đã đổi sang transaction pooler** (`aws-0-ap-south-1.pooler.supabase.com:6543`,
+  `?pgbouncer=true`) — đúng ràng buộc CLAUDE.md đã ghi từ đầu mà `.env.local` chưa theo.
+  `db/client.ts` tự nhận diện pooled và đặt **`prepare: false`** (bắt buộc, pgbouncer transaction mode
+  không giữ session giữa các transaction) + `max: 1`. **Biến `DATABASE_URL` trên Vercel cần đổi tương
+  ứng** — chưa làm, xem mục dưới.
+- **Lỗi API không còn trông giống "chưa có dữ liệu"** (lỗi nghiêm trọng nhất tìm được, chứng kiến trực
+  tiếp khi DB mất kết nối): `workspace.tsx` trước đây có **0 chỗ** đọc `isLoading`/`error` → API 500
+  thì Explorer trống trơn y hệt lúc chưa có dữ liệu, và nút "+ Retailer" biến mất luôn vì `/api/me`
+  cũng lỗi. Nay có `CanvasErrorState` (thông báo + nút Thử lại, nói rõ "dữ liệu vẫn còn trên máy chủ"),
+  Explorer có nút Thử lại, và `useCurrentUser` đổi `retry: false` → thử lại 3 lần với lỗi 5xx nhưng
+  vẫn không thử lại với 401/403.
+- **Phân biệt đang tải / trống**: hết nháy "Chưa có Display Position" mỗi lần mở Surface.
+- **Fit-to-view**: mở Surface tự canh vừa khung (trước luôn 25% cố định). `zoomTo` vốn là dead code;
+  thêm `fitTo()` + nút "Vừa khung" trong header. Khoá theo `surfaceId` để không đè zoom user tự chỉnh.
+- **Bug có sẵn phát hiện khi test tay: wheel zoom chưa bao giờ chạy.** Effect gắn listener chạy 1 lần
+  lúc mount, khi đó chưa chọn Store nên `containerRef.current` là `null`, mà deps (`[zoomBy]`) không
+  bao giờ đổi nên không gắn lại. Sửa bằng callback ref + state `canvasEl` để effect chạy đúng lúc
+  container xuất hiện. **Bài học: `useEffect` phụ thuộc `ref.current` là sai — ref đổi không kích hoạt
+  effect.** Fit-to-view lúc đầu cũng dính đúng bẫy này.
+- **Zoom bám con trỏ** (`zoomAt`): điểm dưới chuột đứng yên thay vì nội dung trôi đi.
+- **Tooltip cho mọi ô** (trước chỉ có trong chế độ dán): displayType, toạ độ, kích thước, sản phẩm +
+  facing, capacity, facing limit. Quan trọng nhất với ô hẹp `< 30px` vốn **không vẽ chữ gì cả**.
+- **Esc bỏ chọn** (trước không có cách nào bỏ chọn, bấm nền chỉ pan) — `clearDisplayPositionSelection`.
+- **Cắt chữ gọn trong ô** bằng `clipPath` — trước description tràn sang ô bên cạnh trong khi bản PNG đã
+  cắt gọn, tức màn hình và file xuất ra không khớp.
+- **`assignmentMap` bọc `useMemo`** — trước dựng lại Map hàng trăm phần tử mỗi frame pan.
+- **Kéo thả Product**: dòng Product trong Explorer `draggable` (chỉ khi có quyền ghi + đang mở Surface),
+  ô canvas nhận `dragover`/`drop` với MIME riêng `application/x-ubl-product` (không dùng `text/plain`
+  để kéo text lạ từ nơi khác vào không bị hiểu nhầm). Thả xong **vào đúng Draft của gán hàng loạt** →
+  vẫn là ô cam chờ Lưu, không ghi DB ngay, tái dùng nguyên đường Save/Huỷ/undo đã có. Ô đã có hàng từ
+  chối nhận thả.
+- **Sửa lỗi trong chính phần vừa làm, tìm ra khi test**: `startBulkAssignProduct` ép
+  `explorerTab: "twin"` → thả xong Explorer nhảy về tab Digital Twin, cướp mất danh sách Product ngay
+  lúc user định kéo tiếp cái thứ hai. Đã bỏ dòng ép tab (thanh gán nằm ở Workspace, không liên quan
+  Explorer).
+- **Đã verify qua browser thật + query Supabase**: kéo thả vào ô trống → "1 ô đang chờ", DB **không
+  đổi** (20 → 20); thả vào ô đã có hàng → `dragover` không `preventDefault`, bị từ chối; tab vẫn ở
+  Product Library sau khi thả; Esc bỏ chọn (viền cam 1 → 0); wheel zoom 17% → 19% với điểm dưới con trỏ
+  chỉ dịch 6px; click chọn ô thường + nút gán hàng loạt + export vẫn hoạt động (không regression).
+- Tương phản màu đạt WCAG AA toàn bộ (0 lỗi), vùng bấm đạt chuẩn, không tràn ngang ở 1024px.
+- `tsc`/`lint`/`build` sạch.
+
+**Việc Tài cần làm:** đổi biến `DATABASE_URL` trên Vercel sang chuỗi pooler (cùng dạng `.env.local`
+hiện tại) — nếu không, production vẫn dùng direct connection và sẽ cạn connection pool khi nhiều
+người dùng đồng thời.
+
 ### Milestone tiếp theo
 
 **Testing & Deploy**: thêm test runner (Vitest/Playwright) + CI. Deploy production (Vercel) đã chạy
