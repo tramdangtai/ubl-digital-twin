@@ -1,0 +1,1040 @@
+<title>Sổ tay Digital Twin</title>
+<style>
+  /* ---------- Tokens: sáng ---------- */
+  :root {
+    --ground: #f7f6f4;
+    --surface: #ffffff;
+    --surface-2: #f1f0ed;
+    --ink: #171a20;
+    --ink-2: #414855;
+    --ink-3: #6b7280;
+    --line: #e3e1dc;
+    --line-2: #d3d0c9;
+
+    --brand: #c44900;        /* cam UBL, hạ sáng để đọc trên nền sáng */
+    --brand-bright: #e85d04; /* cam gốc của app */
+    --brand-wash: #fdf1e8;
+    --navy: #1a365d;
+
+    /* Trùng khít bảng màu ô trên canvas */
+    --ok: #15803d;      --ok-wash: #dcfce7;   --ok-line: #16a34a;
+    --empty: #4338ca;   --empty-wash: #eef2ff; --empty-line: #6366f1;
+    --wait: #9a3412;    --wait-wash: #fff7ed;  --wait-line: #e85d04;
+    --bad: #b91c1c;     --bad-wash: #fee2e2;   --bad-line: #dc2626;
+
+    --shadow: 0 1px 2px rgba(23,26,32,.06), 0 8px 24px -16px rgba(23,26,32,.28);
+    --radius: 10px;
+  }
+  /* ---------- Tokens: tối (hệ điều hành) ---------- */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14161a;
+      --surface: #1c1f25;
+      --surface-2: #23272e;
+      --ink: #eceef2;
+      --ink-2: #b9bfca;
+      --ink-3: #8a919d;
+      --line: #2c3138;
+      --line-2: #3a4048;
+
+      --brand: #ff8a3d;
+      --brand-bright: #ff8a3d;
+      --brand-wash: #33200f;
+      --navy: #9db8dd;
+
+      --ok: #6ee7a5;      --ok-wash: #122a1c;   --ok-line: #2f9e5f;
+      --empty: #a5b4fc;   --empty-wash: #1c1f3a; --empty-line: #6366f1;
+      --wait: #fdba74;    --wait-wash: #33200f;  --wait-line: #e85d04;
+      --bad: #fca5a5;     --bad-wash: #331616;   --bad-line: #dc2626;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
+    }
+  }
+  /* ---------- Tokens: tối (người dùng tự chọn) ---------- */
+  :root[data-theme="dark"] {
+    --ground: #14161a;
+    --surface: #1c1f25;
+    --surface-2: #23272e;
+    --ink: #eceef2;
+    --ink-2: #b9bfca;
+    --ink-3: #8a919d;
+    --line: #2c3138;
+    --line-2: #3a4048;
+
+    --brand: #ff8a3d;
+    --brand-bright: #ff8a3d;
+    --brand-wash: #33200f;
+    --navy: #9db8dd;
+
+    --ok: #6ee7a5;      --ok-wash: #122a1c;   --ok-line: #2f9e5f;
+    --empty: #a5b4fc;   --empty-wash: #1c1f3a; --empty-line: #6366f1;
+    --wait: #fdba74;    --wait-wash: #33200f;  --wait-line: #e85d04;
+    --bad: #fca5a5;     --bad-wash: #331616;   --bad-line: #dc2626;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    /* System stack — bảo đảm dấu tiếng Việt hiển thị đúng trên mọi máy */
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  /* ---------- Mục lục ---------- */
+  nav.toc {
+    position: sticky;
+    top: 24px;
+    padding: 20px 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  nav.toc .toc-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 12px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  nav.toc a {
+    display: flex;
+    gap: 10px;
+    padding: 5px 10px 5px 8px;
+    border-radius: 7px;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { background: var(--surface); color: var(--ink); border-left-color: var(--line-2); }
+  nav.toc a:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+  nav.toc .n { color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 1.1em; }
+
+  /* ---------- Đầu trang ---------- */
+  header.masthead {
+    grid-column: 1 / -1;
+    padding: 64px 0 40px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--brand);
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: clamp(34px, 5.4vw, 52px);
+    line-height: 1.08;
+    letter-spacing: -.022em;
+    font-weight: 700;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 18px;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+  .meta {
+    margin-top: 22px;
+    font-size: 13px;
+    color: var(--ink-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+  }
+
+  main { min-width: 0; padding-top: 8px; }
+
+  section { padding-top: 56px; scroll-margin-top: 20px; }
+  h2 {
+    font-size: 27px;
+    line-height: 1.2;
+    letter-spacing: -.015em;
+    font-weight: 700;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  h2 .sec-n {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brand);
+    letter-spacing: .04em;
+    margin-right: 10px;
+    vertical-align: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  h3 {
+    font-size: 18.5px;
+    font-weight: 650;
+    letter-spacing: -.008em;
+    margin: 36px 0 8px;
+    text-wrap: balance;
+  }
+  h4 { font-size: 15.5px; font-weight: 650; margin: 24px 0 6px; }
+  p { margin: 0 0 14px; max-width: 68ch; }
+  .lead { color: var(--ink-2); font-size: 17px; max-width: 64ch; }
+  ul, ol { max-width: 66ch; padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 7px; }
+  strong { font-weight: 650; }
+  a { color: var(--brand); }
+
+  /* ---------- Chip nhãn nút: trông giống nút thật trong app ---------- */
+  .ui {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+    font-size: .84em;
+    padding: 1.5px 7px;
+    border-radius: 5px;
+    background: var(--surface-2);
+    border: 1px solid var(--line-2);
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .ui.pri { background: var(--brand-wash); border-color: var(--brand); color: var(--brand); font-weight: 600; }
+  .k {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .8em;
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-bottom-width: 2px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Chuỗi 6 tầng ---------- */
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    margin: 22px 0 8px;
+    padding: 0;
+    list-style: none;
+    max-width: none;
+  }
+  .chain li {
+    flex: 1 1 130px;
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--brand);
+    border-radius: var(--radius);
+    padding: 12px 13px 13px;
+    box-shadow: var(--shadow);
+    min-width: 0;
+  }
+  .chain .step {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .chain .name { font-weight: 650; font-size: 15px; margin: 3px 0 4px; }
+  .chain .what { font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+
+  /* ---------- Bảng ---------- */
+  .tw { overflow-x: auto; margin: 18px 0 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); font-weight: 700; background: var(--surface-2); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td code, td .ui { white-space: nowrap; }
+
+  /* ---------- Khối lưu ý ---------- */
+  .note {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ink-3);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 14px 16px;
+    margin: 18px 0;
+    max-width: 68ch;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .t { font-weight: 650; font-size: 13.5px; margin-bottom: 4px; display: flex; gap: 7px; align-items: baseline; }
+  .note.tip { border-left-color: var(--ok-line); background: var(--ok-wash); }
+  .note.tip .t { color: var(--ok); }
+  .note.warn { border-left-color: var(--wait-line); background: var(--wait-wash); }
+  .note.warn .t { color: var(--wait); }
+  .note.stop { border-left-color: var(--bad-line); background: var(--bad-wash); }
+  .note.stop .t { color: var(--bad); }
+
+  /* ---------- Các bước ---------- */
+  ol.steps { list-style: none; padding: 0; margin: 16px 0 20px; counter-reset: s; max-width: 68ch; }
+  ol.steps > li {
+    counter-increment: s;
+    position: relative;
+    padding: 0 0 16px 40px;
+    margin: 0;
+    border-left: 1px solid var(--line-2);
+  }
+  ol.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  ol.steps > li::before {
+    content: counter(s);
+    position: absolute;
+    left: -13px; top: -2px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    color: var(--ink-2);
+    font-size: 12.5px; font-weight: 700;
+    display: grid; place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Bảng màu ô ---------- */
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 10px; margin: 20px 0; }
+  .legend .cell {
+    border-radius: var(--radius);
+    padding: 13px 14px;
+    border: 2px solid;
+    min-width: 0;
+  }
+  .legend .cell .lbl { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+  .legend .cell .desc { font-size: 13px; line-height: 1.45; }
+  .c-ok    { background: var(--ok-wash);    border-color: var(--ok-line);    color: var(--ok); }
+  .c-empty { background: var(--empty-wash); border-color: var(--empty-line); color: var(--empty); }
+  .c-wait  { background: var(--wait-wash);  border-color: var(--wait-line);  color: var(--wait); border-style: dashed; }
+  .c-bad   { background: var(--bad-wash);   border-color: var(--bad-line);   color: var(--bad); }
+
+  /* ---------- So sánh 3 cách gán ---------- */
+  .ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 20px 0; }
+  .way {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 17px;
+    box-shadow: var(--shadow);
+    min-width: 0;
+  }
+  .way.best { border-color: var(--brand); border-width: 2px; }
+  .way .tag {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 6px;
+  }
+  .way.best .tag { color: var(--brand); }
+  .way h4 { margin: 0 0 6px; font-size: 16.5px; }
+  .way p { font-size: 14px; margin: 0 0 10px; color: var(--ink-2); }
+  .way .when { font-size: 13px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--ink); }
+  .way .when b { color: var(--brand); }
+
+  hr.rule { border: none; border-top: 1px solid var(--line); margin: 0; }
+
+  footer {
+    grid-column: 1 / -1;
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 2px solid var(--ink);
+    font-size: 13.5px;
+    color: var(--ink-3);
+  }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: static; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+    nav.toc ol { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    nav.toc a { border-left: none; border: 1px solid var(--line); }
+    header.masthead { padding-top: 40px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Uncel Bills · Digital Twin Platform</div>
+    <h1>Sổ tay sử dụng Digital Twin</h1>
+    <p class="standfirst">
+      Hướng dẫn đầy đủ từ lúc đăng nhập tới lúc xuất file gửi cho retailer. Viết cho người
+      chưa từng dùng phần mềm này — không cần biết gì về kỹ thuật.
+    </p>
+    <div class="meta">
+      <span>Phiên bản tháng 8/2026</span>
+      <span>Đọc hết khoảng 25 phút</span>
+      <span>Làm theo được ngay khi vừa đọc</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Mục lục">
+    <div class="toc-label">Nội dung</div>
+    <ol>
+      <li><a href="#gioi-thieu"><span class="n">1</span><span>App này để làm gì</span></a></li>
+      <li><a href="#dang-nhap"><span class="n">2</span><span>Đăng nhập</span></a></li>
+      <li><a href="#man-hinh"><span class="n">3</span><span>Màn hình chính</span></a></li>
+      <li><a href="#dung-cua-hang"><span class="n">4</span><span>Dựng cửa hàng</span></a></li>
+      <li><a href="#san-pham"><span class="n">5</span><span>Thư viện sản phẩm</span></a></li>
+      <li><a href="#gan"><span class="n">6</span><span>Gán sản phẩm</span></a></li>
+      <li><a href="#anh-nen"><span class="n">7</span><span>Ảnh nền kệ thật</span></a></li>
+      <li><a href="#xuat-file"><span class="n">8</span><span>Xuất PNG &amp; CSV</span></a></li>
+      <li><a href="#nguoi-dung"><span class="n">9</span><span>Quản lý người dùng</span></a></li>
+      <li><a href="#tra-cuu"><span class="n">10</span><span>Tra cứu nhanh</span></a></li>
+      <li><a href="#su-co"><span class="n">11</span><span>Xử lý sự cố</span></a></li>
+      <li><a href="#gioi-han"><span class="n">12</span><span>Giới hạn hiện tại</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- ============ 1 ============ -->
+    <section id="gioi-thieu">
+      <h2><span class="sec-n">01</span>App này để làm gì</h2>
+      <p class="lead">
+        Digital Twin là bản sao số của các kệ hàng ngoài cửa hàng thật. Bạn dựng lại từng kệ,
+        từng tầng, từng vị trí treo — rồi ghi nhận mặt hàng nào đang nằm ở đâu. Kết quả cuối
+        cùng là một file ảnh và một file Excel gửi cho retailer.
+      </p>
+      <p>
+        Toàn bộ phần mềm xoay quanh <strong>sáu tầng dữ liệu lồng nhau</strong>. Hiểu được sáu
+        tầng này là hiểu được 80% cách dùng. Phải làm từ trái sang phải — không thể tạo tầng
+        sau khi chưa có tầng trước.
+      </p>
+
+      <ol class="chain">
+        <li>
+          <div class="step">TẦNG 1</div>
+          <div class="name">Retailer</div>
+          <div class="what">Chuỗi bán lẻ. Ví dụ: Emart, Co.opmart, WinMart.</div>
+        </li>
+        <li>
+          <div class="step">TẦNG 2</div>
+          <div class="name">Store</div>
+          <div class="what">Một cửa hàng cụ thể của chuỗi đó. Ví dụ: Emart Sala.</div>
+        </li>
+        <li>
+          <div class="step">TẦNG 3</div>
+          <div class="name">Fixture</div>
+          <div class="what">Một cái kệ trong cửa hàng. Ví dụ: Kệ trái, Kệ giữa.</div>
+        </li>
+        <li>
+          <div class="step">TẦNG 4</div>
+          <div class="name">Surface</div>
+          <div class="what">Một mặt của kệ đó — mặt trước, mặt sau, hông trái…</div>
+        </li>
+        <li>
+          <div class="step">TẦNG 5</div>
+          <div class="name">Display Position</div>
+          <div class="what">Một ô trưng bày trên mặt kệ: một móc, một chỗ trên tầng.</div>
+        </li>
+        <li>
+          <div class="step">TẦNG 6</div>
+          <div class="name">Product</div>
+          <div class="what">Mặt hàng được gán vào ô đó.</div>
+        </li>
+      </ol>
+
+      <div class="note tip">
+        <div class="t">Cách hình dung dễ nhất</div>
+        <p>
+          Giống địa chỉ nhà: Tỉnh → Quận → Đường → Số nhà → Phòng → Người ở trong phòng.
+          Muốn ghi “ai ở phòng nào” thì phải có phòng trước; muốn có phòng thì phải có nhà trước.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 2 ============ -->
+    <section id="dang-nhap">
+      <h2><span class="sec-n">02</span>Đăng nhập</h2>
+      <p>
+        Mở trình duyệt và vào địa chỉ web của công ty. Bạn sẽ thấy ô
+        <span class="ui">Email</span> và <span class="ui">Mật khẩu</span>, bấm
+        <span class="ui pri">Đăng nhập</span>.
+      </p>
+      <p>
+        Không có nút tự đăng ký. Tài khoản do quản trị viên tạo và gửi cho bạn. Nếu chưa có,
+        hãy liên hệ người phụ trách.
+      </p>
+
+      <h3>Ba loại tài khoản</h3>
+      <p>Quyền của bạn quyết định bạn nhìn thấy những nút nào. Nếu thiếu một nút mà sổ tay này nhắc tới, rất có thể là do quyền.</p>
+      <div class="tw">
+        <table>
+          <thead>
+            <tr><th>Loại</th><th>Làm được gì</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Viewer</strong></td>
+              <td>Chỉ xem và xuất file. Không tạo, không sửa, không xoá được gì.</td>
+            </tr>
+            <tr>
+              <td><strong>Editor</strong></td>
+              <td>Làm được mọi thao tác dữ liệu: tạo kệ, tạo sản phẩm, gán hàng, xuất file.</td>
+            </tr>
+            <tr>
+              <td><strong>Admin</strong></td>
+              <td>Như Editor, cộng thêm: tạo tài khoản cho người khác và tải ảnh nền lên.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Góc trên bên phải luôn hiện email và loại tài khoản của bạn, cạnh nút
+        <span class="ui">Đăng xuất</span>.
+      </p>
+    </section>
+
+    <!-- ============ 3 ============ -->
+    <section id="man-hinh">
+      <h2><span class="sec-n">03</span>Màn hình chính</h2>
+      <p>Màn hình chia làm ba cột. Bạn sẽ làm việc qua lại giữa ba cột này suốt.</p>
+
+      <div class="tw">
+        <table>
+          <thead>
+            <tr><th>Cột</th><th>Vị trí</th><th>Dùng để</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Explorer</strong></td>
+              <td>Bên trái</td>
+              <td>Cây thư mục để đi tới đúng cái kệ, đúng mặt kệ bạn cần. Có hai tab: <span class="ui">Digital Twin</span> (cấu trúc cửa hàng) và <span class="ui">Product Library</span> (danh sách mặt hàng).</td>
+            </tr>
+            <tr>
+              <td><strong>Workspace</strong></td>
+              <td>Ở giữa</td>
+              <td>Bản vẽ. Đây là nơi bạn nhìn thấy kệ và các ô trưng bày.</td>
+            </tr>
+            <tr>
+              <td><strong>Inspector</strong></td>
+              <td>Bên phải</td>
+              <td>Bảng thông tin chi tiết của thứ đang được chọn. Mọi ô nhập liệu đều ở đây.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Điều khiển bản vẽ</h3>
+      <ul>
+        <li><strong>Phóng to / thu nhỏ:</strong> lăn chuột, hoặc bấm <span class="ui">−</span> <span class="ui">+</span> ở góc trên bản vẽ.</li>
+        <li><strong>Di chuyển:</strong> bấm giữ chuột vào chỗ trống rồi kéo.</li>
+        <li><strong>Xem vừa màn hình:</strong> bấm <span class="ui">Vừa khung</span>. Dùng khi bị lạc, không biết kệ đang ở đâu.</li>
+        <li><strong>Bỏ chọn:</strong> bấm phím <span class="k">Esc</span>.</li>
+        <li><strong>Xem thông tin nhanh một ô:</strong> rê chuột lên ô đó, chờ một giây sẽ hiện bảng nhỏ. Rất hữu ích với ô hẹp không hiện chữ.</li>
+      </ul>
+
+      <div class="note tip">
+        <div class="t">Cột quá hẹp hoặc quá rộng</div>
+        <p>
+          Bạn kéo được đường ranh giữa các cột để chỉnh độ rộng. Bấm mũi tên
+          <span class="ui">‹</span> hoặc <span class="ui">›</span> để thu gọn hẳn một cột, lấy chỗ cho bản vẽ.
+          Máy sẽ nhớ lựa chọn này cho lần sau.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 4 ============ -->
+    <section id="dung-cua-hang">
+      <h2><span class="sec-n">04</span>Dựng cửa hàng</h2>
+      <p class="lead">
+        Phần này làm một lần cho mỗi cửa hàng mới. Làm đúng thứ tự sáu tầng đã nói ở mục 1.
+      </p>
+
+      <h3>Bước 1 — Tạo Retailer (chuỗi bán lẻ)</h3>
+      <ol class="steps">
+        <li>Ở tab <span class="ui">Digital Twin</span>, bấm <span class="ui pri">+ Retailer</span> góc trên Explorer.</li>
+        <li>Điền <span class="ui">Retailer Code *</span> — mã ngắn, không dấu, ví dụ <code>MTEMART</code>.</li>
+        <li>Điền <span class="ui">Retailer Name *</span> — tên đầy đủ, ví dụ <code>Emart</code>.</li>
+        <li>Bấm <span class="ui pri">Save</span>.</li>
+      </ol>
+      <div class="note warn">
+        <div class="t">Dấu sao đỏ nghĩa là bắt buộc</div>
+        <p>Ô nào có dấu <code>*</code> thì phải điền, nếu không nút <span class="ui">Save</span> sẽ bị mờ và không bấm được. Mã (Code) <strong>không được trùng</strong> với bất kỳ mã nào đã có trong hệ thống.</p>
+      </div>
+
+      <h3>Bước 2 — Tạo Store (cửa hàng)</h3>
+      <ol class="steps">
+        <li>Bấm vào Retailer vừa tạo để mở nó ra.</li>
+        <li>Bấm <span class="ui">+ Add Store</span> hiện ra bên dưới.</li>
+        <li>Điền <span class="ui">Store Code *</span>, <span class="ui">Store Name *</span>, và <span class="ui">Address</span> nếu có.</li>
+        <li>Bấm <span class="ui pri">Save</span>.</li>
+      </ol>
+
+      <h3>Bước 3 — Tạo Fixture (kệ)</h3>
+      <ol class="steps">
+        <li>Bấm vào Store vừa tạo, rồi bấm <span class="ui">+ Add Fixture</span>.</li>
+        <li>Điền mã và tên kệ, ví dụ <code>KE-01</code> / <code>Kệ trái</code>.</li>
+        <li>Chọn <span class="ui">Fixture Type</span>: Gondola, Endcap, Wall Bay, Island Display hoặc Counter Display.</li>
+        <li>Chọn <span class="ui">Owner Company *</span>: <code>Uncel Bills</code> nếu là kệ của công ty mình, <code>Competitor</code> nếu là kệ đối thủ.</li>
+        <li>
+          Điền ba số đo bằng <strong>milimét</strong>:
+          <span class="ui">Width (mm) *</span> chiều ngang,
+          <span class="ui">Height (mm) *</span> chiều cao,
+          <span class="ui">Depth (mm) *</span> chiều sâu.
+        </li>
+        <li>Điền <span class="ui">Position X (mm)</span> và <span class="ui">Position Y (mm)</span> — vị trí kệ trên mặt bằng, tính từ góc trên bên trái.</li>
+        <li>Bấm <span class="ui pri">Save</span>.</li>
+      </ol>
+
+      <div class="note tip">
+        <div class="t">Hệ thống tự tạo giúp bạn mặt trước</div>
+        <p>
+          Mỗi khi tạo kệ mới, một Surface tên <code>Front</code> (mặt trước) được tạo sẵn với đúng
+          kích thước kệ. Bạn chỉ cần tạo thêm mặt sau hoặc hông nếu thật sự có bày hàng ở đó.
+        </p>
+      </div>
+      <div class="note warn">
+        <div class="t">Mọi số đo đều là milimét</div>
+        <p>Kệ cao 2 mét thì điền <code>2000</code>, không phải <code>2</code>. Đây là lỗi hay gặp nhất khi mới dùng.</p>
+      </div>
+
+      <h3>Bước 4 — Tạo Surface (mặt kệ), nếu cần thêm</h3>
+      <ol class="steps">
+        <li>Bấm vào Fixture, rồi bấm <span class="ui">+ Add Surface</span>.</li>
+        <li>Chọn <span class="ui">Orientation *</span>: Front, Back, Left, Right hoặc Top.</li>
+        <li>Điền chiều ngang và chiều cao của mặt đó (mm).</li>
+        <li>Bấm <span class="ui pri">Save</span>.</li>
+      </ol>
+      <p>Một kệ không thể có hai mặt cùng hướng. Nếu đã có <code>Front</code> rồi thì không tạo thêm <code>Front</code> nữa được.</p>
+
+      <h3>Bước 5 — Tạo các ô trưng bày</h3>
+      <p>
+        Bấm vào Surface để mở bản vẽ mặt kệ. Từ đây có hai cách tạo ô. Với kệ thật ngoài cửa hàng,
+        gần như lúc nào bạn cũng nên dùng cách thứ hai.
+      </p>
+
+      <h4>Cách A — Tạo từng ô một</h4>
+      <p>
+        Bấm <span class="ui">+ Add Display Position</span>. Điền loại ô
+        (<span class="ui">Display Type</span>: Shelf, Hook, Basket, Tray, Pegboard, Other),
+        toạ độ <span class="ui">X (mm)</span> / <span class="ui">Y (mm)</span> tính từ góc trên
+        bên trái của mặt kệ, và kích thước ô. Dùng khi chỉ cần thêm một hai ô lẻ.
+      </p>
+
+      <h4>Cách B — Tạo cả lưới cùng lúc</h4>
+      <p>
+        Bấm <span class="ui">+ Bulk Generate...</span>. Đây là cách nhanh nhất: khai báo lưới một
+        lần, hệ thống sinh ra hàng chục ô cách đều nhau.
+      </p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Ô nhập</th><th>Nghĩa là gì</th></tr></thead>
+          <tbody>
+            <tr><td><span class="ui">Rows *</span></td><td>Số tầng, đếm từ trên xuống.</td></tr>
+            <tr><td><span class="ui">Columns *</span></td><td>Số ô trên mỗi tầng, đếm từ trái sang.</td></tr>
+            <tr><td><span class="ui">Start X (mm)</span> / <span class="ui">Start Y (mm)</span></td><td>Ô đầu tiên bắt đầu cách mép trái và mép trên bao nhiêu.</td></tr>
+            <tr><td><span class="ui">Cell Width (mm) *</span> / <span class="ui">Cell Height (mm) *</span></td><td>Kích thước của mỗi ô.</td></tr>
+            <tr><td><span class="ui">Gap X (mm)</span> / <span class="ui">Gap Y (mm)</span></td><td>Khoảng hở giữa hai ô cạnh nhau và giữa hai tầng.</td></tr>
+            <tr><td><span class="ui">Capacity</span></td><td>Sức chứa tối đa của ô, tính bằng số sản phẩm. Bỏ trống nếu chưa biết.</td></tr>
+            <tr><td><span class="ui">Facing Limit</span></td><td>Số mặt tiền tối đa cho phép bày ở ô đó. Bỏ trống nếu không giới hạn.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Trong lúc bạn gõ, bản vẽ hiện <strong>lưới xem trước bằng viền chấm màu cam</strong>. Nhìn lưới
+        đó chỉnh số cho khớp kệ thật, rồi mới bấm nút tạo. Chưa bấm thì chưa có gì được lưu.
+      </p>
+      <div class="note warn">
+        <div class="t">Lưới không được vượt ra ngoài mặt kệ</div>
+        <p>Nếu lưới rộng hơn hoặc cao hơn Surface, hệ thống sẽ báo lỗi và không tạo. Hãy giảm số hàng, số cột, hoặc kích thước ô.</p>
+      </div>
+    </section>
+
+    <!-- ============ 5 ============ -->
+    <section id="san-pham">
+      <h2><span class="sec-n">05</span>Thư viện sản phẩm</h2>
+      <p>
+        Sản phẩm nằm riêng, không thuộc cây cửa hàng — vì cùng một mặt hàng có thể bày ở rất nhiều
+        kệ khác nhau. Chuyển sang tab <span class="ui">Product Library</span> ở Explorer để làm việc
+        với danh sách này.
+      </p>
+
+      <h3>Thêm sản phẩm mới</h3>
+      <ol class="steps">
+        <li>Bấm <span class="ui pri">+ Product</span>.</li>
+        <li>Điền <span class="ui">Item Code *</span> — mã hàng, không được trùng với mã đã có.</li>
+        <li>Điền <span class="ui">Description *</span> — tên đầy đủ của mặt hàng.</li>
+        <li>Điền thêm nếu có: <span class="ui">Category</span>, <span class="ui">Product Group</span>, <span class="ui">Brand</span>.</li>
+        <li>Dán đường dẫn ảnh vào <span class="ui">Image URL</span>. Ảnh hiện xem trước ngay bên dưới.</li>
+        <li>Điền kích thước hộp sản phẩm (mm) nếu biết.</li>
+        <li>Bấm <span class="ui pri">Save</span>.</li>
+      </ol>
+
+      <div class="note warn">
+        <div class="t">Đường dẫn ảnh phải bắt đầu bằng https://</div>
+        <p>
+          Đường dẫn <code>http://</code> sẽ bị trình duyệt chặn khi web chạy thật, và ô ảnh sẽ hiện
+          hình gạch chéo. Đó là hành vi đúng, không phải lỗi phần mềm — hãy tìm đường dẫn
+          <code>https://</code> thay thế.
+        </p>
+      </div>
+
+      <h3>Tìm sản phẩm</h3>
+      <p>
+        Gõ vào ô tìm kiếm phía trên danh sách. Hệ thống tìm đồng thời trong mã hàng, tên, nhóm,
+        ngành hàng và thương hiệu. Danh sách hiện tối đa 50 mặt hàng mỗi lần — nếu thấy dòng
+        “Hiện 50/… — thu hẹp tìm kiếm để xem thêm”, hãy gõ thêm chữ cho cụ thể hơn.
+      </p>
+    </section>
+
+    <!-- ============ 6 ============ -->
+    <section id="gan">
+      <h2><span class="sec-n">06</span>Gán sản phẩm vào ô</h2>
+      <p class="lead">
+        Đây là công việc chính, chiếm phần lớn thời gian của bạn. Có ba cách; chọn đúng cách sẽ
+        tiết kiệm rất nhiều công.
+      </p>
+
+      <div class="note stop">
+        <div class="t">Quy tắc quan trọng nhất trong toàn bộ sổ tay này</div>
+        <p>
+          <strong>Ô màu cam là ô chưa được lưu.</strong> Bạn gán bao nhiêu ô cũng chưa có gì
+          ghi xuống hệ thống cho tới khi bấm nút <span class="ui pri">Lưu</span>. Nếu đóng trình
+          duyệt hoặc rời khỏi mặt kệ khi còn ô cam, những ô đó sẽ mất. Đây là chủ ý — nó cho phép
+          bạn thoải mái thử và sửa trước khi chốt.
+        </p>
+      </div>
+
+      <div class="ways">
+        <div class="way best">
+          <div class="tag">Nhanh nhất</div>
+          <h4>Kéo và thả</h4>
+          <p>Kéo mặt hàng từ danh sách bên trái, thả thẳng vào ô trên bản vẽ.</p>
+          <div class="when">Dùng khi: <b>vài ô rải rác</b>, mỗi ô một mặt hàng khác nhau.</div>
+        </div>
+        <div class="way">
+          <div class="tag">Nhiều ô một lúc</div>
+          <h4>Gán hàng loạt</h4>
+          <p>Chọn một mặt hàng, rồi bấm lần lượt vào từng ô cần gán.</p>
+          <div class="when">Dùng khi: <b>một mặt hàng bày nhiều ô</b>, ví dụ cả một tầng kệ.</div>
+        </div>
+        <div class="way">
+          <div class="tag">Đầy đủ nhất</div>
+          <h4>Gán từng ô</h4>
+          <p>Chọn ô, chọn mặt hàng, điền thêm thông tin chi tiết rồi xác nhận.</p>
+          <div class="when">Dùng khi: cần khai <b>ngày bắt đầu và ngày kết thúc</b> trưng bày.</div>
+        </div>
+      </div>
+
+      <h3>Cách 1 — Kéo và thả</h3>
+      <ol class="steps">
+        <li>Mở mặt kệ bạn muốn làm việc.</li>
+        <li>Chuyển Explorer sang tab <span class="ui">Product Library</span>.</li>
+        <li>Bấm giữ chuột lên mặt hàng cần gán, kéo sang bản vẽ.</li>
+        <li>Thả vào ô trống. Ô sẽ sáng lên viền cam khi bạn rê tới đúng chỗ.</li>
+        <li>Kéo tiếp mặt hàng khác nếu muốn — danh sách vẫn nằm nguyên đó.</li>
+        <li>Xong hết thì bấm <span class="ui pri">Lưu</span> trên thanh cam.</li>
+      </ol>
+      <p>Ô đã có hàng sẽ không nhận thả. Muốn đổi mặt hàng thì phải gỡ cái cũ ra trước.</p>
+
+      <h3>Cách 2 — Gán hàng loạt</h3>
+      <ol class="steps">
+        <li>Mở mặt kệ, bấm <span class="ui pri">⌖ Gán hàng loạt</span> ở thanh trên bản vẽ.</li>
+        <li>Một thanh màu cam hiện ra. Chọn mặt hàng bằng ô tìm kiếm trong đó.</li>
+        <li>Chỉnh số <span class="ui">Facing</span> nếu cần — số mặt tiền bày ra cho mỗi ô. Mặc định là 1.</li>
+        <li>Bấm lần lượt vào từng ô cần gán. Mỗi ô bấm xong chuyển sang màu cam.</li>
+        <li>Muốn gỡ một ô: bấm lại chính ô đó.</li>
+        <li>Muốn đổi sang mặt hàng khác: bấm <span class="ui">Đổi</span>, chọn mặt hàng mới, rồi bấm tiếp các ô khác.</li>
+        <li>Bấm <span class="ui pri">Lưu</span>. Bấm <span class="ui">Thoát</span> nếu muốn bỏ hết.</li>
+      </ol>
+      <div class="note tip">
+        <div class="t">Gán nhiều mặt hàng trong cùng một lần lưu</div>
+        <p>
+          Bạn có thể dán mặt hàng A vào 5 ô, đổi sang mặt hàng B dán tiếp 3 ô, rồi bấm Lưu một lần
+          cho cả 8 ô. Không cần lưu sau mỗi lần đổi mặt hàng.
+        </p>
+      </div>
+      <p>
+        Nếu đổi số <span class="ui">Facing</span> giữa chừng, các ô đã bấm trước đó
+        <strong>giữ nguyên</strong> số cũ. Muốn áp số mới cho tất cả, bấm dòng chữ
+        <span class="ui">Áp cho tất cả ô đang chờ</span>.
+      </p>
+
+      <h3>Cách 3 — Gán từng ô có ngày tháng</h3>
+      <ol class="steps">
+        <li>Bấm vào ô trên bản vẽ để chọn nó.</li>
+        <li>Sang tab <span class="ui">Product Library</span>, bấm chọn mặt hàng.</li>
+        <li>Ở Inspector, kéo xuống dưới cùng, bấm <span class="ui">Gán Product này vào Display Position đã chọn</span>.</li>
+        <li>Điền <span class="ui">Facing Quantity *</span>, và <span class="ui">Start Date</span> / <span class="ui">End Date</span> nếu đợt trưng bày có thời hạn.</li>
+        <li>Bấm <span class="ui pri">Xác nhận gán</span>.</li>
+      </ol>
+
+      <h3>Gỡ một mặt hàng khỏi ô</h3>
+      <p>
+        Bấm vào ô đó. Ở Inspector sẽ thấy khối <strong>“Đang trưng bày”</strong> kèm nút
+        <span class="ui">Unassign</span>. Bấm nút đó, ô trở về trạng thái trống.
+      </p>
+
+      <h3>Màu sắc các ô nghĩa là gì</h3>
+      <div class="legend">
+        <div class="cell c-ok">
+          <div class="lbl">Xanh lá — đã gán</div>
+          <div class="desc">Ô đã có mặt hàng và đã lưu vào hệ thống.</div>
+        </div>
+        <div class="cell c-empty">
+          <div class="lbl">Tím — còn trống</div>
+          <div class="desc">Ô chưa có mặt hàng nào. Sẵn sàng để gán.</div>
+        </div>
+        <div class="cell c-wait">
+          <div class="lbl">Cam nét đứt — chờ lưu</div>
+          <div class="desc">Bạn vừa gán nhưng chưa bấm Lưu. Chưa ghi vào hệ thống.</div>
+        </div>
+        <div class="cell c-bad">
+          <div class="lbl">Đỏ — không hợp lệ</div>
+          <div class="desc">Thao tác bị từ chối, hoặc ô này bị lỗi khi lưu. Rê chuột lên xem lý do.</div>
+        </div>
+      </div>
+
+      <h3>Chuyển giữa xem chữ và xem hình</h3>
+      <p>
+        Trên thanh bản vẽ có nút <span class="ui">Chữ</span> | <span class="ui">Ảnh</span>.
+        Chế độ <strong>Chữ</strong> hiện mã hàng và tên. Chế độ <strong>Ảnh</strong> hiện hình sản
+        phẩm — trực quan hơn nhiều khi cần đối chiếu với kệ thật. Mặt hàng nào không có ảnh sẽ tự
+        động quay về hiện chữ.
+      </p>
+    </section>
+
+    <!-- ============ 7 ============ -->
+    <section id="anh-nen">
+      <h2><span class="sec-n">07</span>Ảnh nền kệ thật</h2>
+      <p>
+        Bạn có thể đặt ảnh chụp kệ thật làm nền phía sau bản vẽ, để đối chiếu xem ô nào đang lệch
+        so với thực tế.
+      </p>
+
+      <h3>Tải ảnh lên — chỉ Admin làm được</h3>
+      <ol class="steps">
+        <li>Bấm <span class="ui">Ảnh nền</span> ở góc trên bên phải màn hình.</li>
+        <li>Chọn file ảnh. Ảnh lớn sẽ được tự động thu nhỏ, bạn không cần xử lý trước.</li>
+        <li>Đặt <span class="ui">Label (tên nhận dạng) *</span> để sau này dễ tìm, ví dụ “Emart Sala — kệ A1”.</li>
+        <li>Bấm nút tải lên và chờ.</li>
+      </ol>
+      <p>Chỉ nhận file PNG, JPEG hoặc WEBP.</p>
+
+      <h3>Gắn ảnh vào một mặt kệ — Admin và Editor</h3>
+      <ol class="steps">
+        <li>Bấm chọn Surface ở Explorer.</li>
+        <li>Ở Inspector, tick vào ô <span class="ui">Hiện ảnh nền</span>.</li>
+        <li>Bấm chọn một ảnh trong lưới hiện ra.</li>
+        <li>Kéo thanh <span class="ui">Độ trong suốt</span> cho ảnh mờ vừa mắt.</li>
+        <li>Chọn <span class="ui">Kiểu fit</span>: <em>Contain</em> giữ đúng tỉ lệ ảnh, <em>Cover</em> phủ kín khung, <em>Stretch</em> kéo dãn cho vừa.</li>
+        <li>Bấm <span class="ui pri">Save</span>.</li>
+      </ol>
+
+      <div class="note tip">
+        <div class="t">Ảnh nền bị khung ô che mất?</div>
+        <p>
+          Khi có ảnh nền, thanh bản vẽ xuất hiện thêm nút
+          <span class="ui">Khung: Đậm | Vừa | Mờ</span>. Chọn <strong>Mờ</strong> để nhìn rõ ảnh
+          phía sau, chọn <strong>Đậm</strong> khi muốn tập trung vào các ô. Lựa chọn này chỉ ảnh
+          hưởng cách bạn nhìn, không đổi dữ liệu.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 8 ============ -->
+    <section id="xuat-file">
+      <h2><span class="sec-n">08</span>Xuất file PNG và CSV</h2>
+      <p class="lead">
+        Đây là sản phẩm cuối cùng bạn gửi cho retailer. Cả hai nút nằm ở thanh trên bản vẽ và chỉ
+        hiện khi đang mở một mặt kệ. Người dùng Viewer cũng xuất file được.
+      </p>
+
+      <h3>File ảnh PNG</h3>
+      <p>Bấm <span class="ui">⬇ PNG</span>. File ảnh gồm:</p>
+      <ul>
+        <li>Dải tiêu đề: tên chuỗi — cửa hàng — kệ — mặt kệ, kèm kích thước và ngày xuất.</li>
+        <li>Dòng thống kê: tổng số vị trí, số đã gán, số còn trống, số mặt hàng khác nhau.</li>
+        <li>Toàn bộ mặt kệ với các ô, mỗi ô có <strong>số thứ tự</strong> ở góc trên bên phải.</li>
+      </ul>
+      <p>
+        Ảnh luôn chụp <strong>trọn mặt kệ</strong> ở cùng một độ nét, bất kể bạn đang phóng to hay
+        thu nhỏ. Nhờ vậy hai lần xuất khác nhau vẫn cho ra ảnh so sánh được với nhau.
+      </p>
+
+      <h3>File bảng CSV</h3>
+      <p>
+        Bấm <span class="ui">⬇ CSV</span>, rồi mở bằng Excel. Mỗi dòng là một vị trí trưng bày, kể cả
+        vị trí còn trống — vì ô trống cũng là thông tin đáng phân tích.
+      </p>
+      <div class="note tip">
+        <div class="t">Số trên ảnh tra được sang Excel</div>
+        <p>
+          Cột đầu tiên của file CSV tên là <code>stt</code>, trùng khớp với số in trên từng ô trong
+          file PNG. Khi trao đổi qua điện thoại, bạn chỉ cần nói “ô số 7” là hai bên hiểu nhau ngay.
+        </p>
+      </div>
+
+      <h3>Tên file</h3>
+      <p>
+        File tự đặt tên theo dạng
+        <code>MãChuỗi_MãCửaHàng_MãKệ_MặtKệ_NgàyXuất</code>, ví dụ
+        <code>MTEMART_MTEMARTSALAA_KE-01_Front_2026-08-16.png</code>. Không cần đổi tên thủ công.
+      </p>
+
+      <div class="note warn">
+        <div class="t">Nút xuất bị mờ, không bấm được</div>
+        <p>
+          Có hai khả năng. Một: mặt kệ chưa có vị trí trưng bày nào. Hai: bạn còn ô màu cam chưa lưu —
+          hãy bấm <span class="ui pri">Lưu</span> hoặc <span class="ui">Thoát</span> trước. Đây là
+          chủ ý, để file xuất ra không bao giờ chứa dữ liệu chưa được ghi nhận.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 9 ============ -->
+    <section id="nguoi-dung">
+      <h2><span class="sec-n">09</span>Quản lý người dùng</h2>
+      <p>Phần này chỉ dành cho Admin. Bấm <span class="ui">Quản lý Người dùng</span> ở góc trên bên phải.</p>
+
+      <h3>Tạo tài khoản mới</h3>
+      <ol class="steps">
+        <li>Điền <span class="ui">Email *</span> và <span class="ui">Họ tên (tuỳ chọn)</span>.</li>
+        <li>Đặt <span class="ui">Mật khẩu tạm *</span> — tối thiểu 8 ký tự.</li>
+        <li>Chọn <span class="ui">Role</span>: Viewer, Editor hoặc Admin.</li>
+        <li>Bấm tạo. Mật khẩu hiện ra trong khung xanh — chép lại và gửi riêng cho người đó.</li>
+      </ol>
+      <div class="note stop">
+        <div class="t">Mật khẩu chỉ hiện đúng một lần</div>
+        <p>
+          Rời khỏi trang là không xem lại được nữa. Hãy chép ngay. Nếu lỡ mất, tạo lại mật khẩu mới
+          cho tài khoản đó.
+        </p>
+      </div>
+
+      <h3>Khoá và mở khoá</h3>
+      <p>
+        Mỗi dòng người dùng có nút khoá. Tài khoản bị khoá không đăng nhập được nữa, nhưng
+        <strong>toàn bộ dữ liệu họ đã tạo vẫn giữ nguyên</strong>. Đổi quyền thì chọn lại ở ô Role,
+        có hiệu lực ngay.
+      </p>
+    </section>
+
+    <!-- ============ 10 ============ -->
+    <section id="tra-cuu">
+      <h2><span class="sec-n">10</span>Tra cứu nhanh</h2>
+
+      <h3>Phím tắt</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Phím</th><th>Tác dụng</th></tr></thead>
+          <tbody>
+            <tr><td><span class="k">Esc</span></td><td>Bỏ chọn ô đang chọn.</td></tr>
+            <tr><td><span class="k">Lăn chuột</span></td><td>Phóng to / thu nhỏ ngay tại chỗ con trỏ đang chỉ.</td></tr>
+            <tr><td><span class="k">Giữ &amp; kéo nền</span></td><td>Di chuyển bản vẽ.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Ba điều nên nhớ</h3>
+      <ol>
+        <li><strong>Mọi kích thước đều là milimét.</strong> 2 mét là <code>2000</code>.</li>
+        <li><strong>Cam là chưa lưu.</strong> Thấy màu cam nghĩa là còn việc chưa xong.</li>
+        <li><strong>Mã không được trùng.</strong> Mã chuỗi, mã cửa hàng, mã kệ và mã hàng đều phải khác nhau trên toàn hệ thống.</li>
+      </ol>
+
+      <h3>Archive là gì</h3>
+      <p>
+        Phần mềm <strong>không xoá vĩnh viễn</strong> bất cứ thứ gì. Nút <span class="ui">Archive</span>
+        đưa một mục vào trạng thái lưu trữ: nó biến khỏi danh sách nhưng dữ liệu vẫn còn nguyên
+        trong hệ thống.
+      </p>
+      <div class="note warn">
+        <div class="t">Archive kéo theo cả nhánh bên dưới</div>
+        <p>
+          Archive một cửa hàng sẽ archive luôn mọi kệ, mặt kệ và vị trí trưng bày thuộc cửa hàng đó.
+          Hộp thoại xác nhận luôn nói rõ điều này trước khi bạn đồng ý — hãy đọc kỹ.
+          Riêng archive một mặt hàng thì <strong>không</strong> ảnh hưởng các vị trí đang bày mặt hàng
+          đó; nó chỉ ngăn bạn gán mặt hàng đó vào chỗ mới.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 11 ============ -->
+    <section id="su-co">
+      <h2><span class="sec-n">11</span>Xử lý sự cố</h2>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>Bạn thấy</th><th>Nguyên nhân &amp; cách xử lý</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Khung đỏ báo “Không tải được…”</strong></td>
+              <td>Mất kết nối tạm thời. Dữ liệu của bạn vẫn an toàn trên máy chủ. Bấm <span class="ui">Thử lại</span>. Nếu vẫn lỗi, kiểm tra mạng rồi báo người phụ trách.</td>
+            </tr>
+            <tr>
+              <td><strong>“Dữ liệu đã bị người khác thay đổi…”</strong></td>
+              <td>Người khác vừa sửa đúng mục bạn đang sửa. Tải lại trang để lấy bản mới nhất rồi sửa lại. Hệ thống chặn để hai người không ghi đè lên nhau.</td>
+            </tr>
+            <tr>
+              <td><strong>Nút <span class="ui">Save</span> bị mờ</strong></td>
+              <td>Còn ô bắt buộc (<code>*</code>) chưa điền, hoặc bạn chưa thay đổi gì so với ban đầu.</td>
+            </tr>
+            <tr>
+              <td><strong>Không thấy nút tạo/sửa nào</strong></td>
+              <td>Tài khoản của bạn là Viewer. Nhờ Admin nâng quyền lên Editor.</td>
+            </tr>
+            <tr>
+              <td><strong>Bấm ô mà không gán được</strong></td>
+              <td>Ô đó đã có mặt hàng rồi. Gỡ cái cũ bằng <span class="ui">Unassign</span> trước.</td>
+            </tr>
+            <tr>
+              <td><strong>Lưu hàng loạt báo lỗi đỏ</strong></td>
+              <td>Có ít nhất một ô không hợp lệ, nên <strong>không ô nào được lưu cả</strong>. Các ô lỗi hiện màu đỏ trên bản vẽ — sửa hoặc gỡ chúng ra rồi lưu lại.</td>
+            </tr>
+            <tr>
+              <td><strong>Ảnh sản phẩm hiện hình gạch chéo</strong></td>
+              <td>Đường dẫn ảnh sai, ảnh đã bị xoá, hoặc dùng <code>http://</code> thay vì <code>https://</code>.</td>
+            </tr>
+            <tr>
+              <td><strong>Mở mặt kệ mà không thấy gì</strong></td>
+              <td>Có thể bản vẽ đang ở vị trí lệch. Bấm <span class="ui">Vừa khung</span>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 12 ============ -->
+    <section id="gioi-han">
+      <h2><span class="sec-n">12</span>Giới hạn hiện tại</h2>
+      <p>
+        Những việc phần mềm <strong>chưa</strong> làm được ở phiên bản này. Biết trước để khỏi mất
+        công đi tìm:
+      </p>
+      <ul>
+        <li>Chưa nhập được danh sách sản phẩm từ file Excel — phải thêm từng mặt hàng bằng tay.</li>
+        <li>Chưa kéo được vị trí trưng bày trên bản vẽ; muốn đổi chỗ phải sửa toạ độ bằng số ở Inspector.</li>
+        <li>Chưa có <span class="k">Ctrl</span>+<span class="k">Z</span> toàn cục. Riêng khi gán hàng loạt thì bấm lại ô để gỡ.</li>
+        <li>Chưa có đường khôi phục mục đã Archive từ giao diện.</li>
+        <li>Chưa lưu lịch sử các phiên bản planogram theo thời gian.</li>
+        <li>Chưa căn chỉnh được vị trí ảnh nền bằng tay — chỉ chỉnh độ mờ và kiểu lấp khung.</li>
+      </ul>
+      <p>Đây là những hạng mục đã nằm trong kế hoạch phát triển tiếp theo.</p>
+    </section>
+
+  </main>
+
+  <footer>
+    Sổ tay sử dụng Digital Twin Platform · Uncel Bills · Cập nhật tháng 8/2026.
+    Gặp vấn đề không có trong tài liệu này, hãy liên hệ người phụ trách dự án.
+  </footer>
+
+</div>
