@@ -45,3 +45,6 @@ next-env.d.ts
 
 # supabase
 .supabase
+
+# Worktree tạm do agent tạo
+.claude/worktrees/
