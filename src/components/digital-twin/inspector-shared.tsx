@@ -81,11 +81,22 @@ export function UnsavedBadge({ isDirty }: { isDirty: boolean }) {
 
 export function StatusBadge({ status }: { status: "Active" | "Archived" }) {
   return (
+    // Trạng thái không chỉ dựa vào màu: có chấm tròn + chữ, để người phân biệt
+    // màu kém vẫn đọc được (WCAG 1.4.1). green-800 thay green-700 để tương phản
+    // có biên an toàn, không nằm sát ngưỡng 4.5:1.
     <span
-      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-        status === "Active" ? "bg-green-100 text-green-700" : "bg-muted-bg text-muted"
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
+        status === "Active"
+          ? "bg-green-100 text-green-800"
+          : "bg-muted-bg text-muted"
       }`}
     >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full ${
+          status === "Active" ? "bg-green-600" : "bg-muted"
+        }`}
+      />
       {status}
     </span>
   );

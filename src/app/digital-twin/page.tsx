@@ -32,28 +32,44 @@ export default function DigitalTwinPage() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex h-12 shrink-0 items-center border-b border-border bg-card px-4">
-        <span className="font-semibold text-ubl-secondary">Digital Twin</span>
-        <span className="ml-2 text-xs text-muted">Uncel Bills</span>
+      <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border bg-card px-4">
+        {/* Dấu nhận diện: khối cam đặc, gợi một ô trưng bày trên kệ. */}
+        <span aria-hidden="true" className="h-4 w-1.5 rounded-[2px] bg-ubl-accent" />
+        <h1 className="text-[15px] font-semibold tracking-tight text-ubl-secondary">
+          Digital Twin
+        </h1>
+        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+          Uncel Bills
+        </span>
+
         <div className="ml-auto flex items-center gap-3 text-xs">
           {me?.role === "Admin" && (
-            <>
-              <Link href="/users" className="text-ubl-primary hover:underline">
+            <nav aria-label="Quản trị" className="flex items-center gap-1">
+              <Link
+                href="/users"
+                className="tap-min rounded px-2 py-1 font-medium text-ubl-primary hover:bg-muted-bg"
+              >
                 Quản lý Người dùng
               </Link>
-              <Link href="/backgrounds" className="text-ubl-primary hover:underline">
+              <Link
+                href="/backgrounds"
+                className="tap-min rounded px-2 py-1 font-medium text-ubl-primary hover:bg-muted-bg"
+              >
                 Ảnh nền
               </Link>
-            </>
+            </nav>
           )}
           {me && (
-            <span className="text-muted">
-              {me.email} <span className="rounded bg-muted-bg px-1.5 py-0.5">{me.role}</span>
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="max-w-[190px] truncate">{me.email}</span>
+              <span className="rounded border border-border bg-muted-bg px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground">
+                {me.role}
+              </span>
             </span>
           )}
           <button
             onClick={() => signOut()}
-            className="rounded border border-border px-2 py-1 hover:bg-muted-bg"
+            className="tap-min rounded border border-border px-2.5 py-1 font-medium hover:border-muted hover:bg-muted-bg"
           >
             Đăng xuất
           </button>
@@ -62,7 +78,7 @@ export default function DigitalTwinPage() {
 
       {/* overflow-x-auto: nếu tổng độ rộng panel + min-width Workspace vượt viewport,
           cho scroll ngang thay vì để Workspace bị bóp mất. */}
-      <div className="flex flex-1 overflow-x-auto overflow-y-hidden">
+      <main className="flex flex-1 overflow-x-auto overflow-y-hidden">
         <div
           style={{ width: explorerCollapsed ? EXPLORER_COLLAPSED_WIDTH : explorerWidth }}
           className="h-full shrink-0"
@@ -90,7 +106,7 @@ export default function DigitalTwinPage() {
             <Inspector onCollapse={toggleInspectorCollapsed} />
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

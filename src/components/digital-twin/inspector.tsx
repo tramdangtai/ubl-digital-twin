@@ -60,7 +60,7 @@ function CreateRetailerPanel({ onCancel }: { onCancel: () => void }) {
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Tạo Retailer mới</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Tạo Retailer mới</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -125,7 +125,7 @@ function CreateStorePanel({ retailerId, onCancel }: { retailerId: string; onCanc
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Tạo Store mới</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Tạo Store mới</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -216,7 +216,7 @@ function CreateFixturePanel({ storeId, onCancel }: { storeId: string; onCancel: 
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Tạo Fixture mới</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Tạo Fixture mới</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -398,7 +398,7 @@ function RetailerDetailPanel({ retailer }: { retailer: Retailer }) {
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-ubl-secondary">Retailer</h3>
+        <h2 className="font-semibold text-ubl-secondary">Retailer</h2>
         <div className="flex items-center gap-2">
           <UnsavedBadge isDirty={isDirty} />
           <StatusBadge status={retailer.status} />
@@ -493,7 +493,7 @@ function StoreDetailPanel({ store }: { store: Store }) {
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-ubl-secondary">Store</h3>
+        <h2 className="font-semibold text-ubl-secondary">Store</h2>
         <div className="flex items-center gap-2">
           <UnsavedBadge isDirty={isDirty} />
           <StatusBadge status={store.status} />
@@ -606,7 +606,7 @@ function FixtureDetailPanel({ fixture, storeId }: { fixture: Fixture; storeId: s
     return (
       <>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold text-ubl-secondary">Fixture</h3>
+          <h2 className="font-semibold text-ubl-secondary">Fixture</h2>
           <span className="rounded bg-ubl-primary/10 px-1.5 py-0.5 text-xs font-medium text-ubl-primary">
             Editing (Draft)
           </span>
@@ -744,7 +744,7 @@ function FixtureDetailPanel({ fixture, storeId }: { fixture: Fixture; storeId: s
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-ubl-secondary">Fixture</h3>
+        <h2 className="font-semibold text-ubl-secondary">Fixture</h2>
         <StatusBadge status={fixture.status} />
       </div>
 
@@ -817,7 +817,7 @@ function CreateSurfacePanel({ fixtureId, onCancel }: { fixtureId: string; onCanc
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Tạo Surface mới</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Tạo Surface mới</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -960,7 +960,7 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-ubl-secondary">Surface</h3>
+        <h2 className="font-semibold text-ubl-secondary">Surface</h2>
         <div className="flex items-center gap-2">
           <UnsavedBadge isDirty={isDirty} />
           <StatusBadge status={surface.status} />
@@ -1000,9 +1000,12 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
       {/* Giai đoạn 9 — ảnh nền */}
       <div className="mb-4 border-t border-border/50 pt-3">
         <div className="mb-2 flex items-center gap-2">
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted">
+          {/* min-h-6 trên nhãn: ô tick gốc chỉ 18px, nhưng nhãn bọc nó nên vùng
+              bấm thật là cả dòng chữ — đủ ngưỡng 24px của WCAG 2.2. */}
+          <label className="-mx-1 flex min-h-6 cursor-pointer items-center gap-2 rounded px-1 text-xs font-medium text-muted hover:bg-muted-bg">
             <input
               type="checkbox"
+              className="h-[18px] w-[18px] accent-[var(--color-ubl-primary)]"
               checked={hasBgImage}
               disabled={surface.status === "Archived" || !writable}
               onChange={(e) =>
@@ -1050,7 +1053,11 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
             ) : (
               <p className="mb-2 text-xs text-muted">
                 Chưa có ảnh nền.{" "}
-                <a href="/backgrounds" target="_blank" className="text-ubl-primary underline">
+                <a
+                  href="/backgrounds"
+                  target="_blank"
+                  className="tap-min inline-flex rounded px-1 py-1 font-medium text-ubl-primary underline"
+                >
                   Upload ảnh nền →
                 </a>
               </p>
@@ -1063,6 +1070,7 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
               </span>
               <input
                 type="range"
+                className="h-6 w-full accent-[var(--color-ubl-primary)]"
                 min={0}
                 max={1}
                 step={0.05}
@@ -1071,7 +1079,6 @@ function SurfaceDetailPanel({ surface, fixtureId }: { surface: Surface; fixtureI
                 onChange={(e) =>
                   setDraft((d) => ({ ...d, backgroundOpacity: parseFloat(e.target.value) }))
                 }
-                className="w-full"
               />
             </label>
 
@@ -1178,7 +1185,7 @@ function CreateDisplayPositionPanel({
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Tạo Display Position mới</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Tạo Display Position mới</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -1327,7 +1334,7 @@ function DisplayPositionDetailPanel({
     return (
       <>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold text-ubl-secondary">Display Position</h3>
+          <h2 className="font-semibold text-ubl-secondary">Display Position</h2>
           <span className="rounded bg-ubl-primary/10 px-1.5 py-0.5 text-xs font-medium text-ubl-primary">
             Editing (Draft)
           </span>
@@ -1415,7 +1422,7 @@ function DisplayPositionDetailPanel({
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-ubl-secondary">Display Position</h3>
+        <h2 className="font-semibold text-ubl-secondary">Display Position</h2>
         <StatusBadge status={position.status} />
       </div>
 
@@ -1575,7 +1582,7 @@ function BulkGeneratePanel({ surfaceId, onCancel }: { surfaceId: string; onCance
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Bulk Generate Display Position</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Bulk Generate Display Position</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -1773,7 +1780,7 @@ function BulkAssignReviewPanel() {
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Gán hàng loạt</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Gán hàng loạt</h2>
 
       {entries.length === 0 ? (
         <p className="text-sm text-muted">
@@ -1921,11 +1928,14 @@ export function Inspector({ onCollapse }: { onCollapse: () => void }) {
   return (
     <div className="flex h-full flex-col border-l border-border bg-card">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted">Inspector</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+          Inspector
+        </span>
         <button
           onClick={onCollapse}
           title="Thu gọn Inspector"
-          className="rounded px-1 text-muted hover:bg-muted-bg hover:text-foreground"
+          aria-label="Thu gọn Inspector"
+          className="tap-min rounded text-muted hover:bg-muted-bg hover:text-foreground"
         >
           ›
         </button>

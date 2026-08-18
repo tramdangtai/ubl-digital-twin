@@ -48,7 +48,7 @@ export function CreateProductPanel({ onCancel }: { onCancel: () => void }) {
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Tạo Product mới</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Tạo Product mới</h2>
       <GeneralError error={error} />
 
       <label className="mb-3 block">
@@ -221,7 +221,7 @@ export function ProductDetailPanel({ product }: { product: Product }) {
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-ubl-secondary">Product</h3>
+        <h2 className="font-semibold text-ubl-secondary">Product</h2>
         <div className="flex items-center gap-2">
           <UnsavedBadge isDirty={isDirty} />
           <StatusBadge status={product.status} />
@@ -422,7 +422,7 @@ export function AssignProductPanel({
 
   return (
     <>
-      <h3 className="mb-3 font-semibold text-ubl-secondary">Gán Product vào Display Position</h3>
+      <h2 className="mb-3 font-semibold text-ubl-secondary">Gán Product vào Display Position</h2>
       <div className="mb-4 flex items-center gap-2 rounded bg-ubl-primary/10 px-3 py-2 text-sm text-ubl-secondary">
         <ProductThumb url={product.imageUrl} alt={product.description} size={40} />
         <div className="min-w-0">

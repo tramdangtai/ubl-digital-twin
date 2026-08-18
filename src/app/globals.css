@@ -1,26 +1,147 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Design tokens
+   ---------------------------------------------------------------------------
+   Neutral ngả ấm thay vì slate lạnh: app này là công cụ đo đạc bằng mm, kết quả
+   in ra gửi retailer — cảm giác bàn vẽ kỹ thuật đúng hơn dashboard SaaS. Neutral
+   ngả về phía cam khiến màu nhấn trông có chủ đích thay vì mặc định.
+
+   Cam thương hiệu hạ xuống #bd4600 để **cùng một token** dùng được cả hai vai:
+   làm chữ trên nền sáng (4.81:1) và làm nền nút cho chữ trắng (5.20:1). Bản
+   #e85d04 gốc chỉ đạt 3.50:1 khi làm chữ — giữ lại làm accent cho mảng lớn.
+   --------------------------------------------------------------------------- */
 @theme inline {
-  /* UBL brand — extracted from ubl.vn retail identity */
-  --color-ubl-primary: #e85d04;
-  --color-ubl-primary-dark: #c44900;
+  --color-ubl-primary: #bd4600;
+  --color-ubl-primary-dark: #a33a00;
   --color-ubl-secondary: #1a365d;
-  --color-ubl-accent: #f4a261;
-  --color-competitor: #6b7280;
-  --color-competitor-border: #9ca3af;
+  --color-ubl-accent: #e85d04;
+  --color-competitor: #6b635c;
+  --color-competitor-border: #a39a91;
 
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
+  --color-background: #f7f6f4;
+  --color-foreground: #1a1613;
   --color-card: #ffffff;
-  --color-border: #e2e8f0;
-  --color-muted: #64748b;
-  --color-muted-bg: #f1f5f9;
+  --color-border: #ddd9d1;
+  --color-muted: #6b635c;
+  --color-muted-bg: #f0eeea;
 
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
 }
 
-body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
+/* Giá trị dùng trong CSS thuần bên dưới (@theme không expose ra ngoài utility). */
+:root {
+  --ring: #bd4600;
+  --ring-offset: #ffffff;
+  --shadow-panel: 0 1px 2px rgb(26 22 19 / 0.04), 0 8px 24px -18px rgb(26 22 19 / 0.25);
+  --dur: 160ms;
+}
+
+@layer base {
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* App này gần như toàn số đo và toạ độ — chữ số phải thẳng cột. */
+  input[type="number"],
+  table,
+  code,
+  kbd,
+  samp {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+    letter-spacing: -0.011em;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-ubl-accent) 22%, transparent);
+  }
+
+  /* Thanh cuộn mảnh, hoà vào nền — 3 panel đều cuộn nên mặc định của Windows
+     chiếm chỗ và ồn. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cfc9c0 transparent;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #cfc9c0;
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: #b6ada2; }
+}
+
+/* ---------------------------------------------------------------------------
+   Nâng cấp toàn bộ control ở tầng base — không đụng component nào.
+
+   Cố ý để NGOÀI @layer: utility của Tailwind nằm trong layer nên CSS không-layer
+   thắng. Focus ring phải luôn thắng, nếu không một class utility vô tình sẽ xoá
+   mất dấu hiệu bàn phím.
+   --------------------------------------------------------------------------- */
+
+:is(a, button, input, select, textarea, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Tailwind v4 bỏ cursor:pointer mặc định cho <button> — trả lại. */
+:is(button, [role="button"], summary):not(:disabled) {
+  cursor: pointer;
+}
+:is(button, [role="button"]):disabled,
+:is(button, [role="button"])[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+:is(button, a, [role="button"]) {
+  transition: background-color var(--dur) ease, border-color var(--dur) ease,
+    color var(--dur) ease, opacity var(--dur) ease;
+}
+
+:is(input, select, textarea) {
+  transition: border-color var(--dur) ease, box-shadow var(--dur) ease;
+}
+:is(input, select, textarea):focus {
+  border-color: var(--color-ubl-primary);
+}
+:is(input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+/* Vùng bấm tối thiểu 24px (WCAG 2.2 Target Size) cho control cỡ nhỏ, không làm
+   thay đổi kích thước hình vẽ bên trong. */
+.tap-min {
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Chỉ dùng cho khối panel — đổ bóng rất nhẹ để tách 3 cột mà không viền dày. */
+.panel-shadow { box-shadow: var(--shadow-panel); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

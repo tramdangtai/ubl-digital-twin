@@ -656,10 +656,16 @@ function WorkspaceHeader({
   onFitToView?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
-      <div>
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted">Workspace</span>
-        {title && <span className="ml-2 text-sm font-medium text-ubl-secondary">{title}</span>}
+    <div className="flex flex-wrap items-center justify-between gap-y-2 border-b border-border bg-card px-4 py-2">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+          Workspace
+        </span>
+        {title && (
+          <span className="truncate text-sm font-medium text-ubl-secondary" title={title}>
+            {title}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {/* Nút Chữ / Ảnh — chỉ hiện ở Surface View */}
@@ -667,7 +673,7 @@ function WorkspaceHeader({
           <div className="flex items-center rounded border border-border text-xs">
             <button
               onClick={() => onCellModeChange("text")}
-              className={`px-2 py-0.5 rounded-l ${
+              className={`px-2.5 py-1.5 rounded-l ${
                 cellMode === "text"
                   ? "bg-ubl-primary/10 text-ubl-secondary font-medium"
                   : "hover:bg-muted-bg"
@@ -677,7 +683,7 @@ function WorkspaceHeader({
             </button>
             <button
               onClick={() => onCellModeChange("image")}
-              className={`px-2 py-0.5 rounded-r border-l border-border ${
+              className={`px-2.5 py-1.5 rounded-r border-l border-border ${
                 cellMode === "image"
                   ? "bg-ubl-primary/10 text-ubl-secondary font-medium"
                   : "hover:bg-muted-bg"
@@ -693,7 +699,7 @@ function WorkspaceHeader({
           <button
             onClick={onStartBulkAssign}
             title="Chọn 1 sản phẩm rồi bấm lần lượt các ô cần gán"
-            className="rounded border border-ubl-primary/40 bg-ubl-primary/10 px-2 py-0.5 text-xs font-medium text-ubl-secondary hover:bg-ubl-primary/20"
+            className="rounded border border-ubl-primary/40 bg-ubl-primary/10 px-2.5 py-1.5 text-xs font-medium text-ubl-secondary hover:bg-ubl-primary/20"
           >
             ⌖ Gán hàng loạt
           </button>
@@ -705,12 +711,12 @@ function WorkspaceHeader({
             className="flex items-center rounded border border-border text-xs"
             title="Độ đậm nền khung Display Position — giảm để nhìn rõ ảnh nền phía sau"
           >
-            <span className="px-2 py-0.5 text-muted">Khung</span>
+            <span className="px-2.5 py-1.5 text-muted">Khung</span>
             {(["solid", "medium", "light"] as const).map((level) => (
               <button
                 key={level}
                 onClick={() => onCellOpacityChange(level)}
-                className={`border-l border-border px-2 py-0.5 last:rounded-r ${
+                className={`border-l border-border px-2.5 py-1.5 last:rounded-r ${
                   cellOpacity === level
                     ? "bg-ubl-primary/10 font-medium text-ubl-secondary"
                     : "hover:bg-muted-bg"
@@ -735,7 +741,7 @@ function WorkspaceHeader({
                   ? "Lưu hoặc huỷ các thay đổi đang chờ trước khi xuất file"
                   : undefined
               }
-              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg disabled:opacity-50"
+              className="rounded border border-border px-2.5 py-1.5 text-xs hover:bg-muted-bg disabled:opacity-50"
             >
               {isExportingCsv ? "Đang xuất..." : "⬇ CSV"}
             </button>
@@ -747,7 +753,7 @@ function WorkspaceHeader({
                   ? "Lưu hoặc huỷ các thay đổi đang chờ trước khi xuất file"
                   : undefined
               }
-              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg disabled:opacity-50"
+              className="rounded border border-border px-2.5 py-1.5 text-xs hover:bg-muted-bg disabled:opacity-50"
             >
               {isExportingPng ? "Đang xuất..." : "⬇ PNG"}
             </button>
@@ -758,7 +764,7 @@ function WorkspaceHeader({
           <div className="flex items-center gap-1">
             <button
               onClick={onZoomOut}
-              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+              className="rounded border border-border px-2.5 py-1.5 text-xs hover:bg-muted-bg"
             >
               −
             </button>
@@ -767,20 +773,20 @@ function WorkspaceHeader({
               <button
                 onClick={onFitToView}
                 title="Canh toàn bộ vừa khung nhìn"
-                className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+                className="rounded border border-border px-2.5 py-1.5 text-xs hover:bg-muted-bg"
               >
                 Vừa khung
               </button>
             )}
             <button
               onClick={onZoomIn}
-              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+              className="rounded border border-border px-2.5 py-1.5 text-xs hover:bg-muted-bg"
             >
               +
             </button>
             <button
               onClick={onReset}
-              className="ml-1 rounded border border-border px-2 py-0.5 text-xs hover:bg-muted-bg"
+              className="ml-1 rounded border border-border px-2.5 py-1.5 text-xs hover:bg-muted-bg"
             >
               Reset
             </button>

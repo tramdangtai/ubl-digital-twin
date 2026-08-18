@@ -15,7 +15,9 @@ import type { Store } from "@/lib/types/entities";
 import { ProductThumb } from "./product-thumb";
 
 const rowClass = (active: boolean) =>
-  `flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted-bg ${
+  // min-h-[26px]: dòng cây là chỗ bấm nhiều nhất trong app, giữ trên ngưỡng
+  // vùng bấm 24px của WCAG 2.2 kể cả khi chữ ngắn.
+  `flex min-h-[26px] w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted-bg ${
     active ? "bg-ubl-primary/10 font-medium text-ubl-secondary" : ""
   }`;
 
@@ -30,38 +32,47 @@ export function Explorer({ onCollapse }: { onCollapse: () => void }) {
         <button
           onClick={onCollapse}
           title="Thu gọn Explorer"
-          className="rounded px-1 text-muted hover:bg-muted-bg hover:text-foreground"
+          aria-label="Thu gọn Explorer"
+          className="tap-min rounded text-muted hover:bg-muted-bg hover:text-foreground"
         >
           ‹
         </button>
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted">Explorer</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+          Explorer
+        </span>
         {writable && (
           <button
             onClick={explorerTab === "twin" ? startCreateRetailer : startCreateProduct}
-            className="rounded bg-ubl-primary px-2 py-1 text-xs font-medium text-white hover:bg-ubl-primary-dark"
+            className="tap-min rounded bg-ubl-primary px-2.5 py-1.5 text-xs font-medium text-white hover:bg-ubl-primary-dark"
           >
             {explorerTab === "twin" ? "+ Retailer" : "+ Product"}
           </button>
         )}
       </div>
 
-      <div className="flex border-b border-border text-xs">
+      {/* role=tablist để trình đọc màn hình hiểu đây là 2 chế độ loại trừ nhau,
+          không phải 2 nút rời rạc. */}
+      <div role="tablist" aria-label="Chế độ Explorer" className="flex border-b border-border text-xs">
         <button
+          role="tab"
+          aria-selected={explorerTab === "twin"}
           onClick={() => setExplorerTab("twin")}
-          className={`flex-1 py-1.5 font-medium ${
+          className={`flex-1 border-b-2 py-2 font-medium ${
             explorerTab === "twin"
-              ? "border-b-2 border-ubl-primary text-ubl-secondary"
-              : "text-muted hover:text-foreground"
+              ? "border-ubl-primary bg-ubl-primary/[0.06] text-ubl-secondary"
+              : "border-transparent text-muted hover:bg-muted-bg hover:text-foreground"
           }`}
         >
           Digital Twin
         </button>
         <button
+          role="tab"
+          aria-selected={explorerTab === "products"}
           onClick={() => setExplorerTab("products")}
-          className={`flex-1 py-1.5 font-medium ${
+          className={`flex-1 border-b-2 py-2 font-medium ${
             explorerTab === "products"
-              ? "border-b-2 border-ubl-primary text-ubl-secondary"
-              : "text-muted hover:text-foreground"
+              ? "border-ubl-primary bg-ubl-primary/[0.06] text-ubl-secondary"
+              : "border-transparent text-muted hover:bg-muted-bg hover:text-foreground"
           }`}
         >
           Product Library
@@ -247,13 +258,13 @@ function DigitalTwinTree() {
                                                 <>
                                                   <button
                                                     onClick={startCreateDisplayPosition}
-                                                    className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                                    className="w-full rounded px-2 py-1.5 text-left text-[11px] font-medium text-ubl-primary hover:bg-muted-bg"
                                                   >
                                                     + Add Display Position
                                                   </button>
                                                   <button
                                                     onClick={startBulkGenerate}
-                                                    className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                                    className="w-full rounded px-2 py-1.5 text-left text-[11px] font-medium text-ubl-primary hover:bg-muted-bg"
                                                   >
                                                     + Bulk Generate...
                                                   </button>
@@ -267,7 +278,7 @@ function DigitalTwinTree() {
                                     {writable && (
                                       <button
                                         onClick={() => startCreateSurface(f.fixtureId)}
-                                        className="w-full rounded px-2 py-1 text-left text-[11px] text-ubl-primary hover:bg-muted-bg"
+                                        className="w-full rounded px-2 py-1.5 text-left text-[11px] font-medium text-ubl-primary hover:bg-muted-bg"
                                       >
                                         + Add Surface
                                       </button>
@@ -280,7 +291,7 @@ function DigitalTwinTree() {
                           {writable && (
                             <button
                               onClick={startCreateFixture}
-                              className="w-full rounded px-2 py-1 text-left text-xs text-ubl-primary hover:bg-muted-bg"
+                              className="w-full rounded px-2 py-1.5 text-left text-xs font-medium text-ubl-primary hover:bg-muted-bg"
                             >
                               + Add Fixture
                             </button>
@@ -293,7 +304,7 @@ function DigitalTwinTree() {
                 {writable && (
                   <button
                     onClick={() => startCreateStore(r.retailerId)}
-                    className="w-full rounded px-2 py-1 text-left text-xs text-ubl-primary hover:bg-muted-bg"
+                    className="w-full rounded px-2 py-1.5 text-left text-xs font-medium text-ubl-primary hover:bg-muted-bg"
                   >
                     + Add Store
                   </button>
