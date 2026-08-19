@@ -230,7 +230,8 @@ export async function bulkCreateProductAssignments(input: BulkCreateProductAssig
         message: "Display Position không thuộc Surface đang mở.",
       });
     }
-    if (occupied.has(item.positionId)) {
+    // Ô đã có hàng chỉ hợp lệ khi client nói rõ muốn thay thế.
+    if (occupied.has(item.positionId) && !item.replaceExisting) {
       errors.push({
         field: `items.${idx}.positionId`,
         code: "ACTIVE_ASSIGNMENT_EXISTS",
@@ -280,8 +281,31 @@ export async function bulkCreateProductAssignments(input: BulkCreateProductAssig
   // Race với user khác chen vào giữa (4) và đây → unique index bắn 23505,
   // translatePostgresError dịch sang 409. KHÔNG dùng onConflictDoNothing vì nó
   // âm thầm bỏ item mà vẫn báo thành công.
-  const created = await db.transaction(async (tx) =>
-    tx
+  // Ô được đánh dấu thay thế: archive assignment cũ TRƯỚC khi insert cái mới,
+  // trong CÙNG transaction. Không hard delete (nguyên tắc #4) — bản ghi cũ vẫn
+  // còn để tra lịch sử, chỉ chuyển Archived. Phải làm trước insert vì partial
+  // unique index chỉ cho 1 assignment Active mỗi Display Position.
+  const toReplace = items
+    .filter((i) => i.replaceExisting && occupied.has(i.positionId))
+    .map((i) => i.positionId);
+
+  const { created, replacedCount } = await db.transaction(async (tx) => {
+    let replaced = 0;
+    if (toReplace.length > 0) {
+      const archived = await tx
+        .update(productAssignment)
+        .set({ status: "Archived" })
+        .where(
+          and(
+            inArray(productAssignment.positionId, toReplace),
+            eq(productAssignment.status, "Active")
+          )
+        )
+        .returning({ id: productAssignment.assignmentId });
+      replaced = archived.length;
+    }
+
+    const rows = await tx
       .insert(productAssignment)
       .values(
         items.map((i) => ({
@@ -291,10 +315,12 @@ export async function bulkCreateProductAssignments(input: BulkCreateProductAssig
           displayOrder: i.displayOrder,
         }))
       )
-      .returning()
-  );
+      .returning();
 
-  return { created, createdCount: created.length };
+    return { created: rows, replacedCount: replaced };
+  });
+
+  return { created, createdCount: created.length, replacedCount };
 }
 
 export async function updateProductAssignment(

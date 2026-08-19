@@ -47,7 +47,13 @@ async function fetchDataUris(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
-      const res = await fetch(url, { mode: "cors", signal: controller.signal });
+      // Ảnh sản phẩm nằm trên host ngoài không gửi CORS header, nên fetch trực
+      // tiếp luôn bị chặn và ô rơi về chữ. Đi vòng qua proxy same-origin của
+      // app. Ảnh nền đã là same-origin sẵn nên giữ nguyên đường cũ.
+      const target = url.startsWith("/")
+        ? url
+        : `/api/product-images?url=${encodeURIComponent(url)}`;
+      const res = await fetch(target, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       return await new Promise((resolve, reject) => {
@@ -85,10 +91,12 @@ export function buildSurfaceSvgString(
     headerH: number;
     /** < 1 khi Surface có ảnh nền — khớp với độ đậm khung đang hiện trên canvas. */
     cellFillOpacity: number;
+    /** false = chế độ "Tắt": bỏ hẳn nền và viền ô. */
+    cellStrokeVisible: boolean;
   }
 ): { svg: string; totalWidth: number; totalHeight: number } {
   const { retailer, store, fixture, surface, positions, assignmentByPositionId } = ctx;
-  const { dataUris, bgDataUri, cellMode, scale, padding, headerH, cellFillOpacity } = opts;
+  const { dataUris, bgDataUri, cellMode, scale, padding, headerH, cellFillOpacity, cellStrokeVisible } = opts;
 
   const surfaceW = Math.round(surface.widthMm * scale);
   const surfaceH = Math.round(surface.heightMm * scale);
@@ -147,8 +155,12 @@ export function buildSurfaceSvgString(
     const textFill = asgn ? OCCUPIED_TEXT : EMPTY_TEXT;
 
     // Khung mờ đi (có ảnh nền) thì viền phải đậm lên mới thấy lưới ô.
+    // Chế độ "Tắt": bỏ hẳn cả nền lẫn viền — ảnh xuất ra chỉ còn sản phẩm trên
+    // nền trắng, giống bản planogram team Marketing dựng trên Canva.
     const strokeWidth = cellFillOpacity < 1 ? 2 : 1.25;
-    const baseShape = `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="${fill}" fill-opacity="${cellFillOpacity}" stroke="${stroke}" stroke-width="${strokeWidth}" rx="2"/>`;
+    const baseShape = cellStrokeVisible || cellFillOpacity > 0
+      ? `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" fill="${fill}" fill-opacity="${cellFillOpacity}" stroke="${cellStrokeVisible ? stroke : "none"}" stroke-width="${strokeWidth}" rx="2"/>`
+      : "";
 
     // Số thứ tự ô ở góc trên-PHẢI (góc trên-trái đã là item_code), có nền tròn
     // mờ để đọc được cả khi đè lên ảnh nền hoặc ảnh sản phẩm.
@@ -258,7 +270,9 @@ export function buildSurfaceSvgString(
  * scale: FONT_MM chọn sao cho ở scale màn hình 0.25 sẽ ra đúng 16px
  * (16 / 0.25 = 64mm) — kích thước Tài đã chốt là dễ đọc.
  */
-const FONT_MM = 64;
+// 48 thay vì 64: ở 64 chữ chiếm quá nhiều diện tích ô và mã dài bị cắt.
+// Đây là TRẦN — buildTextContent còn co nhỏ thêm để mã vừa bề ngang ô.
+const FONT_MM = 48;
 
 function buildTextContent(
   rect: { x: number; y: number; width: number; height: number },
@@ -270,23 +284,40 @@ function buildTextContent(
 ): string {
   if (rect.width <= 20) return "";
 
-  const font = FONT_MM * scale;
-  const line = font * 1.35; // khoảng cách dòng
-  const padX = Math.max(4, font * 0.25);
-  const baseY = rect.y + font + font * 0.15;
+  /**
+   * Cỡ chữ co theo bề ngang ô, không cố định.
+   *
+   * Trước đây font cố định = FONT_MM * scale, nên item_code dài (vd "MTEMARTSALAA_01")
+   * rộng hơn ô và bị clipPath cắt mất — người xem không đọc được mã. Giờ tính cỡ
+   * sao cho item_code vừa đúng bề ngang, kẹp trong [min, max] để ô hẹp không ra
+   * chữ li ti và ô rộng không ra chữ to quá khổ.
+   */
+  const maxFont = FONT_MM * scale;
+  const minFont = maxFont * 0.4;
+  const padX = Math.max(4, maxFont * 0.22);
+  const usableW = rect.width - padX * 2;
+
+  const label = asgn ? asgn.product.itemCode : pos.displayType;
+  const CHAR_W = 0.58; // hệ số bề ngang ký tự cho font sans-serif hệ thống, chữ đậm
+  const fitted = label.length > 0 ? usableW / (label.length * CHAR_W) : maxFont;
+  const font = Math.max(minFont, Math.min(maxFont, fitted));
+
+  const line = font * 1.3;
+  const baseY = rect.y + font + font * 0.18;
 
   if (!asgn) {
-    return `<text x="${rect.x + padX}" y="${baseY}" font-size="${font}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(pos.displayType)}</text>`;
+    return `<text x="${rect.x + padX}" y="${baseY}" font-size="${font.toFixed(1)}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(pos.displayType)}</text>`;
   }
 
-  // item_code trước (bold), description xuống dòng bên dưới. Dòng nào vượt quá
-  // đáy ô thì bỏ — clipPath vẫn cắt phần thừa nếu 1 từ dài hơn cả bề ngang ô.
-  let text = `<text x="${rect.x + padX}" y="${baseY}" font-size="${font}" font-weight="700" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.itemCode)}</text>`;
+  // item_code trước (đậm), description xuống dòng bên dưới. Dòng nào vượt quá
+  // đáy ô thì bỏ; clipPath vẫn chặn nếu một từ dài hơn cả bề ngang ô.
+  let text = `<text x="${rect.x + padX}" y="${baseY}" font-size="${font.toFixed(1)}" font-weight="700" fill="${textFill}" clip-path="url(#${clipId})">${escXml(asgn.product.itemCode)}</text>`;
 
-  const usableW = rect.width - padX * 2;
-  const maxLines = Math.floor((rect.height - baseY + rect.y - font * 0.3) / line);
-  for (const [i, lineText] of wrapText(asgn.product.description, usableW, font, maxLines).entries()) {
-    text += `<text x="${rect.x + padX}" y="${baseY + line * (i + 1)}" font-size="${font}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(lineText)}</text>`;
+  // Mô tả nhỏ hơn mã một bậc — mã là thứ cần đọc trước.
+  const descFont = font * 0.88;
+  const maxLines = Math.floor((rect.height - (baseY - rect.y) - font * 0.3) / line);
+  for (const [i, lineText] of wrapText(asgn.product.description, usableW, descFont, maxLines).entries()) {
+    text += `<text x="${rect.x + padX}" y="${baseY + line * (i + 1)}" font-size="${descFont.toFixed(1)}" fill="${textFill}" clip-path="url(#${clipId})">${escXml(lineText)}</text>`;
   }
   return text;
 }
@@ -345,9 +376,9 @@ async function svgToCanvas(svgString: string, width: number, height: number): Pr
 
 export async function exportSurfacePng(
   ctx: SurfaceExportContext,
-  opts: { cellMode: SurfaceCellMode; cellFillOpacity?: number }
+  opts: { cellMode: SurfaceCellMode; cellFillOpacity?: number; cellStrokeVisible?: boolean }
 ): Promise<Blob> {
-  const { cellMode, cellFillOpacity = 1 } = opts;
+  const { cellMode, cellFillOpacity = 1, cellStrokeVisible = true } = opts;
 
   // Tính scale: MAX_PX / cạnh dài, nhân 2 cho nét.
   const longestSide = Math.max(ctx.surface.widthMm, ctx.surface.heightMm);
@@ -381,6 +412,7 @@ export async function exportSurfacePng(
     padding: PADDING,
     headerH: HEADER_H,
     cellFillOpacity,
+    cellStrokeVisible,
   });
 
   // B3: SVG → canvas.

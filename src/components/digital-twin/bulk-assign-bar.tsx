@@ -54,6 +54,8 @@ export function BulkAssignBar({ surfaceId }: { surfaceId: string }) {
       productId: p.productId,
       facingQty: p.facingQty,
       displayOrder: 0,
+      // Ô đang có hàng: cho backend biết đây là thay thế có chủ đích.
+      replaceExisting: Boolean(p.replacesExisting),
     }));
     if (items.length === 0) return;
 

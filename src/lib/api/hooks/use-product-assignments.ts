@@ -55,7 +55,13 @@ export function useCreateProductAssignment() {
 
 export interface BulkCreateProductAssignmentsBody {
   surfaceId: string;
-  items: { positionId: string; productId: string; facingQty: number; displayOrder?: number }[];
+  items: {
+    positionId: string;
+    productId: string;
+    facingQty: number;
+    displayOrder?: number;
+    replaceExisting?: boolean;
+  }[];
 }
 
 export interface BulkCreateProductAssignmentsResult {

@@ -27,6 +27,16 @@ export interface PendingAssignment {
   itemCode: string;
   description: string;
   imageUrl: string | null;
+  /**
+   * true = ô này đang có sản phẩm khác và sẽ bị THAY THẾ khi Lưu.
+   *
+   * Cần thiết vì mỗi Display Position chỉ được có 1 assignment Active; muốn gán
+   * sản phẩm mới thì phải archive cái cũ. Đánh dấu ở Draft để user thấy trước
+   * và bỏ được, thay vì ghi đè âm thầm.
+   */
+  replacesExisting?: boolean;
+  /** item_code của sản phẩm sắp bị thay — chỉ để hiển thị. */
+  replacesItemCode?: string;
 }
 
 /** Lý do một cú bấm bị từ chối — hiện flash đỏ trên ô rồi tự tắt. */
@@ -70,7 +80,7 @@ interface BulkAssignDraftState {
   setCurrentProduct: (product: StampProductRef) => void;
   setCurrentFacingQty: (qty: number) => void;
   /** Toggle: đang pending cùng product → gỡ; khác product → thay; chưa có → thêm. */
-  stampPosition: (positionId: string) => void;
+  stampPosition: (positionId: string, replacing?: { itemCode: string }) => void;
   removePending: (positionId: string) => void;
   applyFacingQtyToAllPending: () => void;
   markRejected: (positionId: string, reason: StampRejectReason) => void;
@@ -103,7 +113,7 @@ export const useBulkAssignDraftStore = create<BulkAssignDraftState>((set) => ({
 
   setCurrentFacingQty: (qty) => set({ currentFacingQty: qty }),
 
-  stampPosition: (positionId) =>
+  stampPosition: (positionId, replacing) =>
     set((s) => {
       if (!s.currentProduct) return s;
       const existing = s.pending[positionId];
@@ -120,6 +130,9 @@ export const useBulkAssignDraftStore = create<BulkAssignDraftState>((set) => ({
           itemCode: s.currentProduct.itemCode,
           description: s.currentProduct.description,
           imageUrl: s.currentProduct.imageUrl,
+          // Giữ cờ thay-thế từ lần dán trước nếu đang đổi product trên cùng ô.
+          replacesExisting: replacing ? true : existing?.replacesExisting,
+          replacesItemCode: replacing?.itemCode ?? existing?.replacesItemCode,
         };
       }
 

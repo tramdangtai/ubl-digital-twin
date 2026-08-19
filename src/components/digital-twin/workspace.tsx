@@ -49,6 +49,8 @@ import { useSelectionStore } from "@/lib/state/selection";
 import {
   CELL_FILL_OPACITY,
   CELL_OPACITY_LABELS,
+  CELL_OPACITY_ORDER,
+  CELL_STROKE_VISIBLE,
   useSurfaceViewModeStore,
   type CellOpacityLevel,
   type SurfaceCellMode,
@@ -126,9 +128,6 @@ export function Workspace() {
     setCanvasEl(el);
   }, []);
   const isSurfaceView = Boolean(selectedSurfaceId && surface);
-  // Chỉ giảm độ đậm khung khi thật sự có ảnh nền phía sau — Surface không có
-  // ảnh nền phải giữ nguyên 100% hành vi cũ.
-  const hasBackground = Boolean(surface?.backgroundImageId);
 
   // Gán hàng loạt. Nguồn sự thật là surfaceId của draft store (không phải
   // selection.mode) — xem ghi chú ở startBulkAssignProduct trong selection.ts.
@@ -286,7 +285,8 @@ export function Workspace() {
       const blob = await exportSurfacePng(ctx, {
         cellMode,
         // Ảnh xuất ra phải giống hệt thứ user đang nhìn trên canvas.
-        cellFillOpacity: hasBackground ? CELL_FILL_OPACITY[cellOpacity] : 1,
+        cellFillOpacity: CELL_FILL_OPACITY[cellOpacity],
+        cellStrokeVisible: CELL_STROKE_VISIBLE[cellOpacity],
       });
       const baseName = buildSurfaceExportBaseName(ctx);
       downloadBlob(blob, `${baseName}.png`);
@@ -314,16 +314,17 @@ export function Workspace() {
       draft.markRejected(p.positionId, "POSITION_NOT_ACTIVE");
       return;
     }
-    // Ô đã có Active assignment → không dán chồng (DB chỉ cho 1 assignment/ô).
-    if (assignmentMap.has(p.positionId) && !alreadyPending) {
-      draft.markRejected(p.positionId, "ACTIVE_ASSIGNMENT_EXISTS");
-      return;
-    }
     if (!alreadyPending && Object.keys(draft.pending).length >= MAX_PENDING_ASSIGNMENTS) {
       draft.markRejected(p.positionId, "LIMIT_REACHED");
       return;
     }
-    draft.stampPosition(p.positionId);
+    // Ô đã có hàng vẫn dán được — sẽ THAY THẾ sản phẩm cũ khi Lưu. Đánh dấu để
+    // ô hiện rõ là "thay thế" và user bỏ được trước khi Lưu; không ghi đè âm thầm.
+    const current = assignmentMap.get(p.positionId);
+    draft.stampPosition(
+      p.positionId,
+      current && !alreadyPending ? { itemCode: current.product.itemCode } : undefined
+    );
   }
 
   /**
@@ -414,7 +415,8 @@ export function Workspace() {
               editing={editing}
               assignment={assignmentMap.get(p.positionId)}
               cellMode={cellMode}
-              fillOpacity={hasBackground ? CELL_FILL_OPACITY[cellOpacity] : 1}
+              fillOpacity={CELL_FILL_OPACITY[cellOpacity]}
+              strokeVisible={CELL_STROKE_VISIBLE[cellOpacity]}
               stampMode={stampMode}
               pending={bulkAssign.pending[p.positionId]}
               rejectReason={bulkAssign.rejected[p.positionId]}
@@ -422,7 +424,9 @@ export function Workspace() {
               onSelect={() => selectDisplayPosition(surface.surfaceId, p.positionId)}
               onStamp={() => handleStamp(p)}
               onDropProduct={writable ? (prod) => handleDropProduct(p, prod) : undefined}
-              dropDisabled={
+              // Ô đã có hàng vẫn nhận thả (sẽ thay thế). Chỉ chặn ô đã Archived.
+              dropDisabled={p.status !== "Active"}
+              dropReplaces={
                 assignmentMap.has(p.positionId) && !bulkAssign.pending[p.positionId]
               }
             />
@@ -525,7 +529,6 @@ export function Workspace() {
         isSurfaceView={isSurfaceView}
         cellMode={cellMode}
         onCellModeChange={setCellMode}
-        hasBackground={hasBackground}
         cellOpacity={cellOpacity}
         onCellOpacityChange={setCellOpacity}
         isExportingPng={isExportingPng}
@@ -621,7 +624,6 @@ function WorkspaceHeader({
   isSurfaceView = false,
   cellMode,
   onCellModeChange,
-  hasBackground = false,
   cellOpacity,
   onCellOpacityChange,
   isExportingPng = false,
@@ -642,7 +644,6 @@ function WorkspaceHeader({
   isSurfaceView?: boolean;
   cellMode?: SurfaceCellMode;
   onCellModeChange?: (m: SurfaceCellMode) => void;
-  hasBackground?: boolean;
   cellOpacity?: CellOpacityLevel;
   onCellOpacityChange?: (o: CellOpacityLevel) => void;
   isExportingPng?: boolean;
@@ -705,14 +706,15 @@ function WorkspaceHeader({
           </button>
         )}
 
-        {/* Độ đậm khung — chỉ có nghĩa khi Surface có ảnh nền phía sau */}
-        {isSurfaceView && hasBackground && cellOpacity && onCellOpacityChange && (
+        {/* Độ đậm khung. Hiện ở mọi Surface, không chỉ khi có ảnh nền: "Tắt"
+            dùng để bỏ hẳn khung cho giống bản planogram dựng trên Canva. */}
+        {isSurfaceView && cellOpacity && onCellOpacityChange && (
           <div
             className="flex items-center rounded border border-border text-xs"
-            title="Độ đậm nền khung Display Position — giảm để nhìn rõ ảnh nền phía sau"
+            title="Độ đậm khung Display Position. Tắt = bỏ hẳn nền và viền, chỉ còn sản phẩm."
           >
             <span className="px-2.5 py-1.5 text-muted">Khung</span>
-            {(["solid", "medium", "light"] as const).map((level) => (
+            {CELL_OPACITY_ORDER.map((level) => (
               <button
                 key={level}
                 onClick={() => onCellOpacityChange(level)}
@@ -1030,6 +1032,7 @@ function DisplayPositionShape({
   assignment,
   cellMode,
   fillOpacity = 1,
+  strokeVisible = true,
   stampMode = false,
   pending,
   rejectReason,
@@ -1038,6 +1041,7 @@ function DisplayPositionShape({
   onStamp,
   onDropProduct,
   dropDisabled = false,
+  dropReplaces = false,
 }: {
   position: DisplayPosition;
   geometry: PositionGeometry;
@@ -1048,8 +1052,10 @@ function DisplayPositionShape({
   editing: boolean;
   assignment?: AssignmentWithProduct;
   cellMode: SurfaceCellMode;
-  /** < 1 khi Surface có ảnh nền — để nhìn xuyên khung xuống ảnh kệ thật. */
+  /** < 1 để nhìn xuyên khung; 0 là tắt hẳn nền. */
   fillOpacity?: number;
+  /** false = bỏ luôn viền ô (chế độ "Tắt", giống bản dựng trên Canva). */
+  strokeVisible?: boolean;
   stampMode?: boolean;
   pending?: PendingAssignment;
   rejectReason?: StampRejectReason;
@@ -1057,8 +1063,10 @@ function DisplayPositionShape({
   onSelect: () => void;
   onStamp?: () => void;
   onDropProduct?: (p: StampProductRef) => void;
-  /** Ô đã có hàng / không Active → không nhận thả. */
+  /** Ô không Active → không nhận thả. */
   dropDisabled?: boolean;
+  /** Thả vào đây sẽ thay sản phẩm đang có — dùng để đổi màu gợi ý khi rê tới. */
+  dropReplaces?: boolean;
 }) {
   const rect = positionScreenRect(geometry, scale, panX, panY);
   const active = assignment ?? null;
@@ -1102,9 +1110,12 @@ function DisplayPositionShape({
   const translucent = fillOpacity < 1 && !pending && !errored;
   const baseStrokeWidth = translucent ? 2 : 1.25;
   const effectiveFillOpacity = pending || errored ? 1 : fillOpacity;
+  // Ô đang chờ lưu / đang lỗi luôn phải thấy được, kể cả khi người dùng chọn
+  // "Tắt" — nếu không thì thao tác gán hàng loạt mất hết phản hồi thị giác.
+  const showStroke = strokeVisible || pending || errored || selected || editing;
 
-  // Ô đã có hàng thì không dán chồng được (DB chỉ cho 1 Active assignment/ô).
-  const stampBlocked = stampMode && Boolean(active) && !pending;
+  // Ô đã có hàng: dán được nhưng sẽ THAY THẾ sản phẩm cũ khi Lưu.
+  const stampReplaces = stampMode && Boolean(active) && !pending;
 
   // Kéo-thả: chỉ sáng khi con trỏ đang mang đúng dữ liệu Product của app này.
   const [dragOver, setDragOver] = useState(false);
@@ -1161,18 +1172,16 @@ function DisplayPositionShape({
           // Payload hỏng → bỏ qua, không làm gì cả.
         }
       }}
-      className={
-        stampMode ? (stampBlocked ? "cursor-not-allowed" : "cursor-copy") : "cursor-pointer"
-      }
+      className={stampMode ? "cursor-copy" : "cursor-pointer"}
     >
       {/* Tooltip. Quan trọng nhất khi ô quá hẹp để vẽ chữ (rect.width <= 30) —
           trước đây những ô đó không hiện gì, rê chuột cũng không biết có gì bên trong. */}
       <title>
         {stampMode
-          ? stampBlocked
-            ? "Ô này đã có sản phẩm"
+          ? stampReplaces
+            ? `Đang có ${active!.product.itemCode} — bấm để THAY bằng sản phẩm đang chọn`
             : pending
-            ? `${pending.itemCode} — bấm lại để bỏ`
+            ? `${pending.itemCode}${pending.replacesExisting ? ` (thay ${pending.replacesItemCode})` : ""} — bấm lại để bỏ`
             : "Bấm để gán sản phẩm đang chọn"
           : [
               `${position.displayType} (${position.x}, ${position.y})`,
@@ -1203,29 +1212,47 @@ function DisplayPositionShape({
         height={rect.height}
         fill={cellFill}
         fillOpacity={effectiveFillOpacity}
-        stroke={cellStroke}
+        stroke={showStroke ? cellStroke : "none"}
         strokeWidth={selected || pending || errored ? baseStrokeWidth + 1.25 : baseStrokeWidth}
         strokeDasharray={editing || pending ? "6 3" : undefined}
         rx={2}
       />
 
-      {/* Đang rê sản phẩm lên ô này — tô nổi để biết sẽ thả vào đâu */}
+      {/* Đang rê sản phẩm lên ô này — tô nổi để biết sẽ thả vào đâu.
+          Ô đã có hàng dùng nét đứt + nhãn "THAY", để user biết trước là thả vào
+          đây sẽ đổi sản phẩm chứ không phải thêm mới. */}
       {dragOver && (
-        <rect
-          x={rect.x}
-          y={rect.y}
-          width={rect.width}
-          height={rect.height}
-          fill={PENDING_FILL}
-          fillOpacity={0.85}
-          stroke={PENDING_STROKE}
-          strokeWidth={3}
-          rx={2}
-        />
+        <>
+          <rect
+            x={rect.x}
+            y={rect.y}
+            width={rect.width}
+            height={rect.height}
+            fill={PENDING_FILL}
+            fillOpacity={0.85}
+            stroke={PENDING_STROKE}
+            strokeWidth={3}
+            strokeDasharray={dropReplaces ? "6 3" : undefined}
+            rx={2}
+          />
+          {dropReplaces && rect.width > 34 && (
+            <text
+              x={rect.x + rect.width / 2}
+              y={rect.y + rect.height / 2 + 3}
+              fontSize={9}
+              fontWeight={700}
+              fill={PENDING_TEXT}
+              textAnchor="middle"
+              className="select-none"
+            >
+              THAY
+            </text>
+          )}
+        </>
       )}
 
-      {/* Viền ma khi rê chuột lên ô trống trong chế độ dán */}
-      {stampMode && hovered && !stampBlocked && (
+      {/* Viền ma khi rê chuột trong chế độ dán */}
+      {stampMode && hovered && (
         <rect
           x={rect.x + 1.5}
           y={rect.y + 1.5}
@@ -1340,7 +1367,7 @@ function DisplayPositionShape({
       )}
       {!editing && pending && !errored && (
         <text x={rect.x} y={rect.y - 4} fontSize={9} fill={PENDING_STROKE} fontWeight={600}>
-          Chờ lưu
+          {pending.replacesExisting ? `Thay ${pending.replacesItemCode}` : "Chờ lưu"}
         </text>
       )}
       {errored && (

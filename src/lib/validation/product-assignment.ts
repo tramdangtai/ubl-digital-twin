@@ -47,6 +47,13 @@ export const bulkAssignItemSchema = z.object({
   productId: uuidSchema,
   facingQty: z.number().int().min(1, "Facing Quantity phải >= 1"),
   displayOrder: z.number().int().default(0),
+  /**
+   * true = ô này đang có assignment Active và client CỐ Ý muốn thay thế.
+   *
+   * Mặc định false: nếu client không nói rõ mà ô đã có hàng thì vẫn báo lỗi như
+   * cũ. Ghi đè phải là hành động có chủ đích, không bao giờ là mặc định.
+   */
+  replaceExisting: z.boolean().default(false),
 });
 
 export const MAX_BULK_ASSIGN_ITEMS = 200;

@@ -18,19 +18,37 @@ export type SurfaceCellMode = "text" | "image";
  * vô dụng. Ba mức này cho user tự cân đối giữa "thấy rõ ô" và "thấy rõ kệ thật".
  * Cũng là View State → localStorage, không thêm cột DB (đúng quyết định D2).
  */
-export type CellOpacityLevel = "solid" | "medium" | "light";
+export type CellOpacityLevel = "solid" | "medium" | "light" | "none";
 
 export const CELL_FILL_OPACITY: Record<CellOpacityLevel, number> = {
   solid: 1,
   medium: 0.35,
   light: 0.12,
+  none: 0,
+};
+
+/**
+ * "Tắt" bỏ luôn cả viền, không chỉ nền.
+ *
+ * Team Marketing đang dựng planogram trên Canva, nơi sản phẩm nằm trên nền
+ * trắng không có khung ô nào. Chỉ giảm độ mờ nền thì viền vẫn còn và ảnh xuất
+ * ra vẫn trông như bảng tính, không giống bản họ quen dùng.
+ */
+export const CELL_STROKE_VISIBLE: Record<CellOpacityLevel, boolean> = {
+  solid: true,
+  medium: true,
+  light: true,
+  none: false,
 };
 
 export const CELL_OPACITY_LABELS: Record<CellOpacityLevel, string> = {
   solid: "Đậm",
   medium: "Vừa",
   light: "Mờ",
+  none: "Tắt",
 };
+
+export const CELL_OPACITY_ORDER: CellOpacityLevel[] = ["solid", "medium", "light", "none"];
 
 interface SurfaceViewModeState {
   cellMode: SurfaceCellMode;
